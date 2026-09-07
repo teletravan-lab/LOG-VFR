@@ -554,7 +554,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
       {/* 1. TOP APPLICATION BAR (Hidden when printing) */}
       <header className="no-print bg-slate-900 text-white border-b border-slate-800 shadow-md sticky top-0 z-40">
-        <        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
+                <div className="relative max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
           {/* Logo & Title & Analytics Counter */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-sm shrink-0">
@@ -735,7 +735,7 @@ export default function App() {
             </div>
 
             {/* 3. Imprimer log vierge (fond sombre d'origine, contour et texte grisés subtilement plus clairs) */}
-            <div className="flex flex-col items-center">
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col items-center">
               <button
                 type="button"
                 id="print-blank-log-header-btn"
