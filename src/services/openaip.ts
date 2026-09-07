@@ -1,5 +1,4 @@
 import { AerodromeInfo } from '../types';
-import { FRENCH_AERODROMES, formatAerodromeNotes, searchAerodromes } from '../data/aerodromes';
 
 export interface OpenAIPAirport {
   _id?: string;
@@ -16,6 +15,62 @@ export interface OpenAIPAirport {
 }
 
 export const DEFAULT_OPENAIP_KEY = '62b567343cce3397cdb4ea8a530ae752';
+
+/**
+ * Extrait un code OACI de la saisie, sans faux positifs.
+ * Accepte "LFPX" ou "LFPX Chavenay". Refuse "PONT", "COTE", "GARE".
+ */
+export function extractIcao(input: string): string | null {
+  const upper = (input || '').trim().toUpperCase();
+  if (/^[A-Z]{4}$/.test(upper)) return upper;
+  const m = upper.match(/\b(LF[A-Z]{2})\b/);
+  return m ? m[1] : null;
+}
+
+function mapFrequencies(list: any[]): AerodromeInfo['frequencies'] {
+  const f: AerodromeInfo['frequencies'] = {};
+  for (const item of list || []) {
+    const val = item.value || '';
+    const n = (item.name || '').toUpperCase();
+    const t = item.type;
+    if (!val) continue;
+    if (!f.atis && (n.includes('ATIS') || t === 15 || t === 1)) f.atis = val;
+    else if (!f.twr && (n.includes('TWR') || n.includes('TOUR') || n.includes('TOWER') || t === 2)) f.twr = val;
+    else if (!f.gnd && (n.includes('GND') || n.includes('SOL') || n.includes('GROUND') || t === 3)) f.gnd = val;
+    else if (!f.afis && (n.includes('AFIS') || t === 9)) f.afis = val;
+    else if (!f.aa && (n.includes('A/A') || n.includes('AUTO') || n.includes('UNICOM') || n.includes('INFO') || [10, 13, 14, 16].includes(t))) f.aa = val;
+    else if (!f.app && (n.includes('APP') || n.includes('APPROCHE') || t === 5)) f.app = val;
+  }
+  f.afis_aa = f.afis || f.aa || '';
+  return f;
+}
+
+function mapRunways(list: any[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of list || []) {
+    const des = r.designator;
+    if (!des || seen.has(des)) continue;
+    const num = parseInt(des, 10);
+    const len = r.dimension?.length?.value ? ` (${Math.round(r.dimension.length.value)}m)` : '';
+    if (!isNaN(num)) {
+      const rec = num <= 18 ? num + 18 : num - 18;
+      const recStr = rec < 10 ? `0${rec}` : `${rec}`;
+      const opp = (list || []).find((o: any) => o.designator?.startsWith(recStr));
+      seen.add(des);
+      if (opp) {
+        seen.add(opp.designator);
+        out.push(`${des}/${opp.designator}${len}`);
+      } else {
+        out.push(`${des}${len}`);
+      }
+    } else {
+      seen.add(des);
+      out.push(des);
+    }
+  }
+  return out.join(' - ');
+}
 
 export interface ArrivalAirportResult {
   oaci: string;
@@ -95,8 +150,8 @@ export async function fetchAerodromeDetails(
                 : item.elevation.value
             )
           : undefined,
-      runways: '',
-      frequencies: {},
+      runways: mapRunways(item.runways),
+      frequencies: mapFrequencies(item.frequencies),
       lat: Array.isArray(coords) ? coords[1] : undefined,
       lon: Array.isArray(coords) ? coords[0] : undefined,
     };
@@ -268,95 +323,4 @@ export async function fetchArrivalAirportData(
   }
 
   return result;
-}
-
-export async function searchOpenAIPOrLocal(
-  query: string,
-  openAipApiKey?: string
-): Promise<AerodromeInfo[]> {
-  const cleanQ = query.trim().toLowerCase();
-  if (!cleanQ) return [];
-  const localMatches = searchAerodromes(query);
-  
-  if (openAipApiKey && openAipApiKey.trim().length > 5) {
-    try {
-      const response = await fetch(
-        `https://api.core.openaip.net/api/airports?search=${encodeURIComponent(
-          query
-        )}&page=1&limit=10&apiKey=${openAipApiKey.trim()}`,
-        {
-          headers: {
-            'x-openaip-api-key': openAipApiKey.trim(),
-            Accept: 'application/json',
-          },
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const items = data.items || [];
-        const remoteAerodromes: AerodromeInfo[] = items.map((item: any) => {
-          const freqs: any = {};
-          if (Array.isArray(item.frequencies)) {
-            for (const f of item.frequencies) {
-              const nameLower = (f.name || '').toLowerCase();
-              const type = f.type;
-              if (type === 1 || type === 15 || nameLower.includes('atis')) freqs.atis = f.value;
-              else if (type === 2 || nameLower.includes('twr') || nameLower.includes('tour')) freqs.twr = f.value;
-              else if (type === 3 || nameLower.includes('gnd') || nameLower.includes('sol')) freqs.gnd = f.value;
-              else if (type === 9 || nameLower.includes('afis')) freqs.afis = f.value;
-              else if (
-                type === 16 ||
-                type === 13 ||
-                type === 14 ||
-                type === 10 ||
-                nameLower.includes('a/a') ||
-                nameLower.includes('auto') ||
-                nameLower.includes('unicom') ||
-                nameLower.includes('info')
-              ) {
-                freqs.aa = f.value;
-              } else if (type === 5 || nameLower.includes('app') || nameLower.includes('approche')) {
-                freqs.app = f.value;
-              }
-            }
-          }
-          let rwyStr = '';
-          if (Array.isArray(item.runways) && item.runways.length > 0) {
-            const desList = Array.from(
-              new Set(item.runways.map((r: any) => r.designator).filter(Boolean))
-            );
-            if (desList.length > 0) {
-              rwyStr = desList.slice(0, 4).join('/');
-            }
-          }
-          return {
-            oaci: item.icaoCode || item.iataCode || '----',
-            name: item.name,
-            city: item.city || '',
-            region: item.country || '',
-            elevationFt: item.elevation?.value
-              ? Math.round(
-                  item.elevation.unit === 0
-                    ? item.elevation.value * 3.28084
-                    : item.elevation.value
-                )
-              : undefined,
-            runways: rwyStr,
-            frequencies: freqs,
-            notes: item.country ? `OpenAIP: ${item.country}` : '',
-          };
-        });
-        const combined = [...localMatches];
-        for (const rem of remoteAerodromes) {
-          if (!combined.some((l) => l.oaci.toUpperCase() === rem.oaci.toUpperCase())) {
-            combined.push(rem);
-          }
-        }
-        return combined.slice(0, 15);
-      }
-    } catch (err) {
-      console.warn('OpenAIP API lookup failed, falling back to local base:', err);
-    }
-  }
-  return localMatches.slice(0, 10);
 }
