@@ -72,36 +72,6 @@ function mapRunways(list: any[]): string {
   return out.join(' - ');
 }
 
-export interface ArrivalAirportResult {
-  oaci: string;
-  name: string;
-  lat?: number;
-  lng?: number;
-  elevationFt?: number;
-  frequencies: {
-    atis?: string;
-    twr?: string;
-    gnd?: string;
-    afis?: string;
-    aa?: string;
-    afis_aa?: string;
-    app?: string;
-    siv?: string;
-  };
-  runways?: string;
-  tdpQnhFt?: string;
-  integration?: string;
-  sunriseUtc?: string;
-  sunriseLocal?: string;
-  sunsetUtc?: string;
-  sunsetLocal?: string;
-  vfrDayStartUtc?: string;
-  vfrDayStartLocal?: string;
-  vfrDayEndUtc?: string;
-  vfrDayEndLocal?: string;
-  rawNotes?: string;
-}
-
 /**
  * Récupère les données d'un terrain depuis OpenAIP, par code OACI exact.
  * Renvoie null si OpenAIP ne connaît pas ce code : on préfère des champs
