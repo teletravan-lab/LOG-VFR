@@ -708,7 +708,7 @@ export default function App() {
             </div>
 
             {/* 2. Calculette Vent ETE (Pour le moment ne fait rien) */}
-            <div>
+                        <div className="relative">
               <button
                 type="button"
                 id="calculette-ete-header-btn"
@@ -721,6 +721,12 @@ export default function App() {
                 <span>Calculette Vent ETE</span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-700" />
               </button>
+              <WindCalculator
+        isOpen={showWindCalc}
+        onClose={() => setShowWindCalc(false)}
+        aircraftModel={flightPlan.aircraftModel}
+        cruiseSpeedKt={flightPlan.cruiseSpeedKt}
+      />
             </div>
 
             {/* 3. Imprimer log vierge (fond sombre d'origine, contour et texte grisés subtilement plus clairs) */}
