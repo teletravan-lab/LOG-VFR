@@ -53,7 +53,6 @@ export interface ArrivalAirportResult {
  * vides à des valeurs approchantes sur une planchette de vol.
  * Le résultat est mis en cache dans localStorage.
  */
-
 export async function fetchAerodromeDetails(
   oaci: string,
   apiKey: string = DEFAULT_OPENAIP_KEY
@@ -65,12 +64,12 @@ export async function fetchAerodromeDetails(
     const cached = localStorage.getItem('AERO_CACHE_' + code);
     if (cached) return JSON.parse(cached) as AerodromeInfo;
   } catch {
-    // localStorage indisponible : on interroge le réseau
-  } // <-- Accolade manquante ajoutée ici
+    // localStorage indisponible : on interroge le réseau directement
+  }
 
   try {
     const res = await fetch(
-      `https://api.core.openaip.net/api/airports?search=${encodeURIComponent(code)}&page=1&limit=10`, // <-- Variables manquantes corrigées
+      `https://api.core.openaip.net/api/airports?search=${encodeURIComponent(code)}&page=1&limit=10`,
       { headers: { 'x-openaip-api-key': apiKey, Accept: 'application/json' } }
     );
     if (!res.ok) {
@@ -96,8 +95,8 @@ export async function fetchAerodromeDetails(
                 : item.elevation.value
             )
           : undefined,
-      runways: '', // <-- Fonctions non définies retirées
-      frequencies: {}, 
+      runways: '',
+      frequencies: {},
       lat: Array.isArray(coords) ? coords[1] : undefined,
       lon: Array.isArray(coords) ? coords[0] : undefined,
     };
@@ -112,7 +111,7 @@ export async function fetchAerodromeDetails(
     console.warn('OpenAIP indisponible pour', code, err);
     return null;
   }
-} // <-- Accolade manquante ajoutée ici
+}// <-- Accolade manquante ajoutée ici
 
 /**
  * Notes pré-remplies pour le log de nav.
