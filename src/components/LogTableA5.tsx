@@ -94,22 +94,39 @@ export const LogTableA5: React.FC<LogTableA5Props> = ({
     siv: destination.frequencies?.siv || destAero?.frequencies.siv || '',
   };
 
+const destFreqs = {
+    atis: destination.frequencies?.atis || destAero?.frequencies?.atis || '',
+    twr: destination.frequencies?.twr || destAero?.frequencies?.twr || '',
+    gnd: destination.frequencies?.gnd || destAero?.frequencies?.gnd || '',
+    afis: destination.frequencies?.afis || destAero?.frequencies?.afis || '',
+    aa: destination.frequencies?.aa || destAero?.frequencies?.aa || '',
+    afis_aa:
+      destination.frequencies?.afis_aa ||
+      destination.frequencies?.afis ||
+      destination.frequencies?.aa ||
+      destAero?.frequencies?.afis_aa ||
+      destAero?.frequencies?.afis ||
+      destAero?.frequencies?.aa ||
+      '',
+    app: destination.frequencies?.app || destAero?.frequencies?.app || '',
+    siv: destination.frequencies?.siv || destAero?.frequencies?.siv || '',
+  };
   const depFreqs = {
-    atis: departure.frequencies?.atis || depAero?.frequencies.atis || '',
-    twr: departure.frequencies?.twr || depAero?.frequencies.twr || '',
-    gnd: departure.frequencies?.gnd || depAero?.frequencies.gnd || '',
-    afis: departure.frequencies?.afis || depAero?.frequencies.afis || '',
-    aa: departure.frequencies?.aa || depAero?.frequencies.aa || '',
+    atis: departure.frequencies?.atis || depAero?.frequencies?.atis || '',
+    twr: departure.frequencies?.twr || depAero?.frequencies?.twr || '',
+    gnd: departure.frequencies?.gnd || depAero?.frequencies?.gnd || '',
+    afis: departure.frequencies?.afis || depAero?.frequencies?.afis || '',
+    aa: departure.frequencies?.aa || depAero?.frequencies?.aa || '',
     afis_aa:
       departure.frequencies?.afis_aa ||
       departure.frequencies?.afis ||
       departure.frequencies?.aa ||
-      depAero?.frequencies.afis_aa ||
-      depAero?.frequencies.afis ||
-      depAero?.frequencies.aa ||
+      depAero?.frequencies?.afis_aa ||
+      depAero?.frequencies?.afis ||
+      depAero?.frequencies?.aa ||
       '',
-    app: departure.frequencies?.app || depAero?.frequencies.app || '',
-    siv: departure.frequencies?.siv || depAero?.frequencies.siv || '',
+    app: departure.frequencies?.app || depAero?.frequencies?.app || '',
+    siv: departure.frequencies?.siv || depAero?.frequencies?.siv || '',
   };
 
   const destElevation = destination.elevationFt ?? destAero?.elevationFt;
