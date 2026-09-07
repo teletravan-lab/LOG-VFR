@@ -213,15 +213,16 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
 
             <div>
               <p className="font-semibold text-slate-800">Décomposition du vent</p>
-              <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">{`θ  = Dv − RM              (angle vent / route)
-Xw = Vw × sin(θ)         (composante traversière)
-Hw = Vw × cos(θ)         (composante de face, > 0 = face)`}</pre>
+                           <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">
+                {'θ  = Dv − RM              (angle vent / route)\nXw = Vw × sin(θ)         (composante traversière)\nHw = Vw × cos(θ)         (composante de face, > 0 = face)'}
+              </pre>
             </div>
 
             <div>
               <p className="font-semibold text-slate-800">Dérive et cap</p>
-              <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">{`δ   = arcsin(Xw / Vp)     (angle de dérive)
-Cap = RM + δ`}</pre>
+                            <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">
+                {'δ   = arcsin(Xw / Vp)     (angle de dérive)\nCap = RM + δ'}
+              </pre>
               <p className="mt-1 text-[11px]">
                 Le nez de l'avion est décalé de δ vers le vent pour que la trajectoire au sol suive
                 la route voulue. Si |Xw| dépasse Vp, aucun cap ne permet de tenir la route.
@@ -230,9 +231,9 @@ Cap = RM + δ`}</pre>
 
             <div>
               <p className="font-semibold text-slate-800">Vitesse sol et temps</p>
-              <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">{`Vs          = Vp × cos(δ) − Hw
-T sans vent = D / Vp × 60   (minutes)
-T avec vent = D / Vs × 60   (minutes)`}</pre>
+                            <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">
+                {'Vs          = Vp × cos(δ) − Hw\nT sans vent = D / Vp × 60   (minutes)\nT avec vent = D / Vs × 60   (minutes)'}
+              </pre>
             </div>
 
             <div className="px-2.5 py-2 bg-amber-50 border border-amber-300 rounded text-[11px] text-amber-900">
@@ -249,5 +250,8 @@ T avec vent = D / Vs × 60   (minutes)`}</pre>
             </div>
           </div>
         )}
-        
+              </div>
+    </div>
+  );
+};
 
