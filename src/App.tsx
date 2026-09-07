@@ -853,7 +853,7 @@ export default function App() {
           <A5KneeboardView
             flightPlan={isPrintingBlank ? BLANK_FLIGHT_PLAN : flightPlan}
             isPrintMode={true}
-            duplicateIfSinglePage={true}
+                        duplicateIfSinglePage={isPrintingBlank}
           />
         </div>
       </div>

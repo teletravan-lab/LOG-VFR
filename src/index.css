@@ -2,43 +2,36 @@
 
 @layer utilities {
   @media print {
-    @page {
-      size: A5 portrait;
-      margin: 3mm;
+     @page {
+      size: A4 landscape;
+      margin: 4mm;
     }
 
-    body {
-      background-color: #ffffff !important;
-      color: #000000 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-
-    .no-print {
-      display: none !important;
-    }
-
-    .print-only {
-      display: block !important;
+    .a5-print-grid {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: wrap !important;
+      align-content: flex-start !important;
+      justify-content: flex-start !important;
+      gap: 0 !important;
+      width: 289mm !important;
     }
 
     .a5-sheet {
       box-shadow: none !important;
       border: 1.5px solid #cbd5e1 !important;
-      margin: 0 auto !important;
+      margin: 0 !important;
       padding: 2.5mm 3.5mm !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      height: 100% !important;
-      min-height: 0 !important;
-      max-height: 100% !important;
+      width: 144mm !important;
+      max-width: 144mm !important;
+      height: 202mm !important;
+      min-height: 202mm !important;
+      max-height: 202mm !important;
       box-sizing: border-box !important;
       break-inside: avoid !important;
       page-break-inside: avoid !important;
-      break-after: page !important;
-      page-break-after: always !important;
+      break-after: auto !important;
+      page-break-after: auto !important;
       display: flex !important;
       flex-direction: column !important;
       justify-content: space-between !important;
@@ -46,12 +39,15 @@
       background: #ffffff !important;
     }
 
+    .a5-sheet:nth-child(2n) {
+      break-after: page !important;
+      page-break-after: always !important;
+    }
+
     .a5-sheet:last-child {
       break-after: auto !important;
       page-break-after: auto !important;
     }
-  }
-}
 
 /* Date input with 100% full hit coverage for calendar picker */
 .date-picker-full-hit {

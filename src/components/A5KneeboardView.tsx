@@ -423,7 +423,7 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-6">
+      <div className="a5-print-grid flex flex-col gap-6">
       {pagesToRender.map((page, idx) => {
         const isLast = idx === pagesToRender.length - 1;
         const shouldPageBreak = forcePageBreakAfter || !isLast;
