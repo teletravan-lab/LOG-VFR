@@ -24,6 +24,7 @@ import { FlightPlanEditor } from './components/FlightPlanEditor';
 import { FRENCH_AERODROMES } from './data/aerodromes';
 import { DEFAULT_OPENAIP_KEY } from './services/openaip';
 import { subscribeToAnalytics, incrementPrintCount } from './services/firebase';
+import { WindCalculator } from './components/WindCalculator';
 
 const BLANK_FLIGHT_PLAN: FlightPlan = {
   aircraftModel: '',
@@ -146,6 +147,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showWindCalc, setShowWindCalc] = useState<boolean>(false);
   const [logsCreatedCount, setLogsCreatedCount] = useState<number | null>(null);
 
   // Subscribe to live Firestore analytics counter
@@ -710,7 +712,9 @@ export default function App() {
               <button
                 type="button"
                 id="calculette-ete-header-btn"
-                className="bg-slate-200 text-slate-900 border border-slate-300 font-semibold px-3 py-1 rounded text-xs flex items-center gap-1.5 shadow-2xs cursor-default"
+                className="bg-slate-200 hover:bg-slate-100 text-slate-900 border border-slate-300 font-semibold px-3 py-1 rounded text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                onClick={() => setShowWindCalc(true)}
+
                 title="Calculette Vent ETE"
               >
                 <Calculator className="w-3.5 h-3.5 text-slate-700" />
@@ -847,6 +851,13 @@ export default function App() {
           />
         </div>
       </div>
+
+            <WindCalculator
+        isOpen={showWindCalc}
+        onClose={() => setShowWindCalc(false)}
+        aircraftModel={flightPlan.aircraftModel}
+        cruiseSpeedKt={flightPlan.cruiseSpeedKt}
+      />
 
       {/* 4. HELP & PRINTING GUIDE MODAL */}
       {showHelpModal && (
