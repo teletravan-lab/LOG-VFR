@@ -554,7 +554,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
       {/* 1. TOP APPLICATION BAR (Hidden when printing) */}
       <header className="no-print bg-slate-900 text-white border-b border-slate-800 shadow-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+        <        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
           {/* Logo & Title & Analytics Counter */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-sm shrink-0">
@@ -587,7 +587,7 @@ export default function App() {
           </div>
 
           {/* 3 Header Items: Météo & Notam, Calculette Vent ETE, Imprimer log vierge */}
-          <div className="flex items-start gap-2.5 sm:gap-3 flex-wrap justify-end">
+                   <div className="flex-1 flex items-center justify-center gap-2.5 sm:gap-3 flex-wrap">
             {/* 1. Météo et notam Menu */}
             <div className="relative" ref={weatherMenuRef}>
               <button
@@ -718,7 +718,7 @@ export default function App() {
                 type="button"
                 id="calculette-ete-header-btn"
                 className="bg-slate-200 hover:bg-slate-100 text-slate-900 border border-slate-300 font-semibold px-3 py-1 rounded text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-                onClick={() => setShowWindCalc(true)}
+                             onClick={() => setShowWindCalc((v) => !v)}
 
                 title="Calculette Vent ETE"
               >

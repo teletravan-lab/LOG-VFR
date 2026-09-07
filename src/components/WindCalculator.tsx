@@ -149,7 +149,7 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
   );
 
   return (
-    <div className="no-print absolute right-0 top-full mt-1.5 w-[min(92vw,32rem)] bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-4 text-left">
+        <div className="no-print absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-[min(92vw,32rem)] bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-4 text-left">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex-1 px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-lg text-xs text-neutral-200">
           <strong className="text-white">{aircraftModel || '—'}</strong>
@@ -201,7 +201,7 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
         {sortie('Vitesse sol', fmt(res.vs, 'kt'))}
       </div>
       <div className="flex items-start gap-2">
-                <div className="flex-1 text-[11px] leading-snug">
+                        <div className="text-[11px] leading-snug">
           <p className="text-gray-250">
             Aucune valeur n'est reportée automatiquement dans le log.
           </p>
