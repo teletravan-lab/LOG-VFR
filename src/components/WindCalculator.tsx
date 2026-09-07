@@ -175,6 +175,58 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
         <p className="text-[10px] text-slate-500 italic mb-3">
           Aucune valeur n'est reportée automatiquement dans le log : à vous de les recopier après vérification.
         </p>
+        {showInfo && (
+          <div className="border-t pt-3 mt-1 text-xs text-slate-700 space-y-3">
+            <p className="font-bold text-slate-900 text-sm">Détail des calculs</p>
 
+            <div>
+              <p className="font-semibold text-slate-800">Variables</p>
+              <ul className="list-disc list-inside space-y-0.5 mt-1 font-mono text-[11px]">
+                <li>Vp — vitesse propre de l'avion (kt), reprise du log</li>
+                <li>RM — route magnétique souhaitée (°)</li>
+                <li>D — distance du tronçon (NM)</li>
+                <li>Dv — direction d'où vient le vent (°, vraie)</li>
+                <li>Vw — vitesse du vent (kt)</li>
+              </ul>
+            </div>
+
+            <div>
+              <p className="font-semibold text-slate-800">Décomposition du vent</p>
+              <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">{`θ  = Dv − RM              (angle vent / route)
+Xw = Vw × sin(θ)         (composante traversière)
+Hw = Vw × cos(θ)         (composante de face, > 0 = face)`}</pre>
+            </div>
+
+            <div>
+              <p className="font-semibold text-slate-800">Dérive et cap</p>
+              <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">{`δ   = arcsin(Xw / Vp)     (angle de dérive)
+Cap = RM + δ`}</pre>
+              <p className="mt-1 text-[11px]">
+                Le nez de l'avion est décalé de δ vers le vent pour que la trajectoire au sol suive
+                la route voulue. Si |Xw| dépasse Vp, aucun cap ne permet de tenir la route.
+              </p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-slate-800">Vitesse sol et temps</p>
+              <pre className="bg-slate-50 border border-slate-200 rounded p-2 mt-1 font-mono text-[11px] whitespace-pre-wrap">{`Vs          = Vp × cos(δ) − Hw
+T sans vent = D / Vp × 60   (minutes)
+T avec vent = D / Vs × 60   (minutes)`}</pre>
+            </div>
+
+            <div className="px-2.5 py-2 bg-amber-50 border border-amber-300 rounded text-[11px] text-amber-900">
+              <strong>Référentiels.</strong> Le vent des METAR, TAF et Windy est en direction
+              <em> vraie</em> ; celui annoncé par la tour ou l'ATIS est en <em>magnétique</em>. La route
+              saisie ici est magnétique. En France la déclinaison est faible (1 à 2°), l'écart reste
+              négligeable — mais avec un vent fort, vérifiez la source de votre donnée.
+            </div>
+
+            <div className="px-2.5 py-2 bg-slate-100 border border-slate-300 rounded text-[11px]">
+              Le vent est supposé constant sur tout le tronçon et l'altitude est ignorée. Ces
+              résultats sont une aide au calcul, pas une préparation de vol : le commandant de bord
+              reste responsable de ses valeurs.
+            </div>
+          </div>
+        )}
         
 
