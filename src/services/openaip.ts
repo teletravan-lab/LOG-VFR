@@ -269,3 +269,94 @@ export async function fetchArrivalAirportData(
 
   return result;
 }
+
+export async function searchOpenAIPOrLocal(
+  query: string,
+  openAipApiKey?: string
+): Promise<AerodromeInfo[]> {
+  const cleanQ = query.trim().toLowerCase();
+  if (!cleanQ) return [];
+  const localMatches = searchAerodromes(query);
+  
+  if (openAipApiKey && openAipApiKey.trim().length > 5) {
+    try {
+      const response = await fetch(
+        `https://api.core.openaip.net/api/airports?search=${encodeURIComponent(
+          query
+        )}&page=1&limit=10&apiKey=${openAipApiKey.trim()}`,
+        {
+          headers: {
+            'x-openaip-api-key': openAipApiKey.trim(),
+            Accept: 'application/json',
+          },
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const items = data.items || [];
+        const remoteAerodromes: AerodromeInfo[] = items.map((item: any) => {
+          const freqs: any = {};
+          if (Array.isArray(item.frequencies)) {
+            for (const f of item.frequencies) {
+              const nameLower = (f.name || '').toLowerCase();
+              const type = f.type;
+              if (type === 1 || type === 15 || nameLower.includes('atis')) freqs.atis = f.value;
+              else if (type === 2 || nameLower.includes('twr') || nameLower.includes('tour')) freqs.twr = f.value;
+              else if (type === 3 || nameLower.includes('gnd') || nameLower.includes('sol')) freqs.gnd = f.value;
+              else if (type === 9 || nameLower.includes('afis')) freqs.afis = f.value;
+              else if (
+                type === 16 ||
+                type === 13 ||
+                type === 14 ||
+                type === 10 ||
+                nameLower.includes('a/a') ||
+                nameLower.includes('auto') ||
+                nameLower.includes('unicom') ||
+                nameLower.includes('info')
+              ) {
+                freqs.aa = f.value;
+              } else if (type === 5 || nameLower.includes('app') || nameLower.includes('approche')) {
+                freqs.app = f.value;
+              }
+            }
+          }
+          let rwyStr = '';
+          if (Array.isArray(item.runways) && item.runways.length > 0) {
+            const desList = Array.from(
+              new Set(item.runways.map((r: any) => r.designator).filter(Boolean))
+            );
+            if (desList.length > 0) {
+              rwyStr = desList.slice(0, 4).join('/');
+            }
+          }
+          return {
+            oaci: item.icaoCode || item.iataCode || '----',
+            name: item.name,
+            city: item.city || '',
+            region: item.country || '',
+            elevationFt: item.elevation?.value
+              ? Math.round(
+                  item.elevation.unit === 0
+                    ? item.elevation.value * 3.28084
+                    : item.elevation.value
+                )
+              : undefined,
+            runways: rwyStr,
+            frequencies: freqs,
+            notes: item.country ? `OpenAIP: ${item.country}` : '',
+          };
+        });
+        const combined = [...localMatches];
+        for (const rem of remoteAerodromes) {
+          if (!combined.some((l) => l.oaci.toUpperCase() === rem.oaci.toUpperCase())) {
+            combined.push(rem);
+          }
+        }
+        return combined.slice(0, 15);
+      }
+    } catch (err) {
+      console.warn('OpenAIP API lookup failed, falling back to local base:', err);
+    }
+  }
+  return localMatches.slice(0, 10);
+}
