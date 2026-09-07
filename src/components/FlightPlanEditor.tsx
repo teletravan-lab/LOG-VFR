@@ -807,7 +807,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
       {/* 2. ITINERARY LIST: ÉTAPES & BRANCHES MERGÉES */}
       <div className="space-y-0">
         {/* --- DÉPART (Origine) --- */}
-        <div className="border-2 border-sky-600 ring-1 ring-sky-700/30 bg-white rounded-xl shadow-xs overflow-hidden">
+        <div className="border-2 border-sky-600 ring-1 ring-sky-700/30 bg-white rounded-xl shadow-xs">
           {/* En-tête Départ */}
           <div className="p-3 bg-sky-50/40 rounded-xl">
             <div className="flex items-center justify-between mb-2">

@@ -105,13 +105,18 @@ export default function App() {
         notes: '',
         tableNotes: '',
       },
-      waypoints: [
+            waypoints: [],
+      legs: [
         {
-          id: 'wp-1-default',
-          type: 'custom',
-          name: '',
+          id: 'leg-0',
+          alt: '',
+          rm: '',
+          dist: '',
+          ete: '',
+          temps: '',
+          eta: '',
+          consoTotale: '',
           notes: '',
-          tableNotes: '',
         },
       ],
       legs: [
