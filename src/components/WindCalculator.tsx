@@ -83,7 +83,9 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
   if (!isOpen) return null;
 
   const fmt = (n: number | null | undefined, unit: string, dec = 0) =>
-    n === null || n === undefined || !Number.isFinite(n) ? '—' : ${n.toFixed(dec)} ${unit};
+       n === null || n === undefined || !Number.isFinite(n)
+      ? '—'
+      : n.toFixed(dec) + ' ' + unit;
 
   const champ = (
     label: string,
@@ -107,9 +109,23 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
   );
 
   const sortie = (label: string, value: string, fort = false) => (
-    <div className={flex flex-col gap-0.5 px-3 py-2 rounded-lg border ${fort ? 'bg-sky-50 border-sky-200' : 'bg-slate-50 border-slate-200'}}>
-      <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">{label}</span>
-      <span className={font-mono ${fort ? 'text-lg font-bold text-sky-900' : 'text-base text-slate-900'}}>{value}</span>
+    <div
+      className={
+        'flex flex-col gap-0.5 px-3 py-2 rounded-lg border ' +
+        (fort ? 'bg-sky-50 border-sky-200' : 'bg-slate-50 border-slate-200')
+      }
+    >
+      <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+        {label}
+      </span>
+      <span
+        className={
+          'font-mono ' +
+          (fort ? 'text-lg font-bold text-sky-900' : 'text-base text-slate-900')
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 
@@ -126,7 +142,12 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
               type="button"
               id="wind-calc-info-btn"
               onClick={() => setShowInfo((v) => !v)}
-              className={p-1.5 rounded-lg transition-colors ${showInfo ? 'bg-sky-100 text-sky-700' : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100'}}
+                            className={
+                'p-1.5 rounded-lg transition-colors ' +
+                (showInfo
+                  ? 'bg-sky-100 text-sky-700'
+                  : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100')
+              }
               title="Détail des calculs et formules"
             >
               <Info className="w-4 h-4" />
@@ -168,7 +189,7 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
 
         {sortie('T sans vent', fmt(res.tSansVent, 'min'))}
           {sortie('T avec vent', fmt(res.tAvecVent, 'min'), true)}
-          {sortie('Cap à tenir', res.cap === undefined ? '—' : ${Math.round(res.cap)}°, true)}
+                    {sortie('Cap à tenir', res.cap === undefined ? '—' : Math.round(res.cap) + '°', true)}
           {sortie('Vitesse sol', fmt(res.vs, 'kt'))}
         </div>
 
