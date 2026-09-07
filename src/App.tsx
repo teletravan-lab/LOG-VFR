@@ -741,9 +741,6 @@ export default function App() {
                 <Printer className="w-3.5 h-3.5 text-slate-300" />
                 <span>Imprimer log vierge</span>
               </button>
-              <span className="text-[10px] text-slate-400 font-normal italic mt-0.5 whitespace-nowrap">
-                Imprimez en deux pages par feuille
-              </span>
             </div>
           </div>
         </div>
@@ -788,7 +785,7 @@ export default function App() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-sky-600" />
-              <span>Préparation du Log de Nav</span>
+              <span>Paramétrage</span>
             </h2>
           </div>
 
@@ -807,14 +804,9 @@ export default function App() {
           }`}
         >
           {/* Preview Toolbar */}
-          <div className="w-full max-w-[148mm] flex items-center justify-between mb-2 text-xs text-slate-600 px-1">
-            <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-              <span>Aperçu Planchette</span>
-            </div>
+                    <div className="w-full max-w-[148mm] flex items-center justify-end mb-2 text-xs text-slate-600 px-1">
+           
             <div className="flex items-center gap-2.5">
-              <span className="text-xs text-slate-500 font-normal italic">
-                Imprimez en deux pages par feuille
-              </span>
               <button
                 type="button"
                 id="quick-print-preview-btn"
