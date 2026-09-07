@@ -76,23 +76,6 @@ export const LogTableA5: React.FC<LogTableA5Props> = ({
     );
   }, [departure.name, departure.oaci]);
 
-  const destFreqs = {
-    atis: destination.frequencies?.atis || destAero?.frequencies.atis || '',
-    twr: destination.frequencies?.twr || destAero?.frequencies.twr || '',
-    gnd: destination.frequencies?.gnd || destAero?.frequencies.gnd || '',
-    afis: destination.frequencies?.afis || destAero?.frequencies.afis || '',
-    aa: destination.frequencies?.aa || destAero?.frequencies.aa || '',
-    afis_aa:
-      destination.frequencies?.afis_aa ||
-      destination.frequencies?.afis ||
-      destination.frequencies?.aa ||
-      destAero?.frequencies.afis_aa ||
-      destAero?.frequencies.afis ||
-      destAero?.frequencies.aa ||
-      '',
-    app: destination.frequencies?.app || destAero?.frequencies.app || '',
-    siv: destination.frequencies?.siv || destAero?.frequencies.siv || '',
-  };
 
 const destFreqs = {
     atis: destination.frequencies?.atis || destAero?.frequencies?.atis || '',
