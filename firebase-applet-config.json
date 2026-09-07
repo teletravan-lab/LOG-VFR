@@ -1,0 +1,11 @@
+{
+  "projectId": "sky-log-vfr",
+  "appId": "1:453865037741:web:1aff2425965b66c442cb24",
+  "apiKey": "AIzaSyDiLbOQ_j9FDa9PEbtvTqDXmdvyMbKbais",
+  "authDomain": "sky-log-vfr.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "sky-log-vfr.firebasestorage.app",
+  "messagingSenderId": "453865037741",
+  "measurementId": "",
+  "recaptchaSiteKey": ""
+}

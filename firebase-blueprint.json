@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "analytics": {
+      "title": "analytics",
+      "description": "Global analytics and logs counter",
+      "type": "object",
+      "properties": {
+        "printCount": {
+          "type": "number",
+          "description": "Total logs count printed or created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["printCount"]
+    },
+    "flightLog": {
+      "title": "flightLog",
+      "description": "Saved flight plan log with share code",
+      "type": "object",
+      "properties": {
+        "shareCode": {
+          "type": "string",
+          "description": "Unique code for the flight plan log"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO creation date"
+        },
+        "flightPlan": {
+          "type": "object",
+          "description": "Flight plan details"
+        }
+      },
+      "required": ["shareCode", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/analytics/{analyticsId}": {
+      "schema": "analytics",
+      "description": "Global counters"
+    },
+    "/flightLogs/{logId}": {
+      "schema": "flightLog",
+      "description": "Stored flight plans"
+    }
+  }
+}
