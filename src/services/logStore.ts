@@ -2,6 +2,10 @@ import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from './firebase';
 import { FlightPlan } from '../types';
 
+// URL de production de l'application. Laisser vide pour utiliser
+// l'adresse courante du navigateur.
+export const APP_BASE_URL = 'https://log-vfr.ai.studio';
+
 /**
  * Alphabet de 56 symboles sans les caractères ambigus (0, O, 1, l, I).
  */
@@ -147,6 +151,20 @@ export async function loadFlightLogFromFirestore(
  * Formate l'URL complète avec le protocole, le domaine et le paramètre ?log=JJ-MM-XXXXXX
  */
 export function getLogUrl(logId: string): string {
-  if (typeof window === 'undefined') return `?log=${logId}`;
+  const base = APP_BASE_URL.trim();
+  if (base !== '') {
+    const cleanBase = base.replace(/\/+$/, '');
+    return `${cleanBase}/?log=${encodeURIComponent(logId)}`;
+  }
+
+  if (typeof window === 'undefined') return `?log=${encodeURIComponent(logId)}`;
   return `${window.location.origin}${window.location.pathname}?log=${encodeURIComponent(logId)}`;
+}
+
+/**
+ * Retourne l'URL sans le protocole (sans "https://"), pour un affichage plus court à l'écran.
+ */
+export function getLogUrlForDisplay(logId: string): string {
+  const fullUrl = getLogUrl(logId);
+  return fullUrl.replace(/^https?:\/\//, '');
 }

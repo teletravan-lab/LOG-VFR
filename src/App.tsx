@@ -33,35 +33,9 @@ import {
   generateLogId,
   saveFlightLogToFirestore,
   loadFlightLogFromFirestore,
+  getLogUrl,
+  getLogUrlForDisplay,
 } from './services/logStore';
-
-const SHORT_DOMAIN = 'https://logv.fr'; // vide = utiliser l'URL réelle
-
-function getLogUrls(id: string): { copyUrl: string; displayUrl: string } {
-  if (SHORT_DOMAIN && SHORT_DOMAIN.trim() !== '') {
-    const base = SHORT_DOMAIN.trim().replace(/\/+$/, '');
-    const url = `${base}/?log=${id}`;
-    return {
-      copyUrl: url,
-      displayUrl: url,
-    };
-  }
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-  const copyUrl = `${origin}${pathname}?log=${id}`;
-
-  let domainPrefix = origin;
-  if (domainPrefix.length > 24) {
-    domainPrefix = `${domainPrefix.slice(0, 20)}…`;
-  }
-  const displayUrl = `${domainPrefix}?log=${id}`;
-
-  return {
-    copyUrl,
-    displayUrl,
-  };
-}
 
 const BLANK_FLIGHT_PLAN: FlightPlan = {
   aircraftModel: '',
@@ -368,12 +342,18 @@ export default function App() {
   };
 
   // Calcul mémorisé des URLs (statique après la première sauvegarde)
-  const logUrls = useMemo(() => (logId ? getLogUrls(logId) : { copyUrl: '', displayUrl: '' }), [logId]);
+  const logUrls = useMemo(
+    () =>
+      logId
+        ? { copyUrl: getLogUrl(logId), displayUrl: getLogUrlForDisplay(logId) }
+        : { copyUrl: '', displayUrl: '' },
+    [logId]
+  );
 
   // Copie de l'URL complète dans le presse-papiers avec feedback
   const handleCopyUrl = async () => {
     if (!logId) return;
-    const { copyUrl } = getLogUrls(logId);
+    const copyUrl = getLogUrl(logId);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(copyUrl);
@@ -1101,13 +1081,13 @@ export default function App() {
                     )}
                   </button>
 
-                  {/* LIEN (élément de droite) : picto copier en premier, URL remontée tronquée avec '...', marge de droite, et texte 'Conservez ce lien pour ce log' */}
+                  {/* LIEN (élément de droite) : picto copier en premier, URL sans https://, et texte 'Conservez ce lien pour ce log' */}
                   <button
                     type="button"
                     id="log-share-link-btn"
                     onClick={handleCopyUrl}
                     title="Conservez ce lien pour retrouver et modifier ce log"
-                    className="h-10 pl-2.5 pr-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-lg flex items-center gap-2 transition-colors cursor-pointer shadow-2xs min-w-0 max-w-[195px] sm:max-w-[235px] overflow-hidden"
+                    className="h-10 pl-2.5 pr-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-lg flex items-center gap-2 transition-colors cursor-pointer shadow-2xs min-w-0 max-w-[260px] sm:max-w-[320px] overflow-hidden"
                   >
                     {isCopied ? (
                       <div className="flex items-center gap-2 min-w-0 w-full">
