@@ -149,7 +149,7 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
   );
 
   return (
-        <div className="no-print absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-[min(92vw,32rem)] bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-4 text-left">
+    <div className="no-print absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 top-full mt-2 w-[min(94vw,32rem)] max-h-[85vh] overflow-y-auto bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-4 text-left">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex-1 px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-lg text-xs text-neutral-200">
           <strong className="text-white">{aircraftModel || '—'}</strong>

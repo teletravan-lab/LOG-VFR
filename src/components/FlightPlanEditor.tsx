@@ -22,12 +22,14 @@ import { FlightPlan, Waypoint, NavLeg, WaypointType, AerodromeInfo } from '../ty
 import { AerodromeSearchInput } from './AerodromeSearchInput';
 import { fetchArrivalAirportData, fetchSunTimes } from '../services/openaip';
 import { AerodromeIndexEntry, FRENCH_AERODROMES } from '../data/aerodromes';
+import { truncateWpName } from '../lib/formatters';
 
 interface FlightPlanEditorProps {
   flightPlan: FlightPlan;
   onChange: (updated: FlightPlan) => void;
   openAipApiKey?: string;
   onOpenAipApiKeyChange?: (key: string) => void;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
@@ -35,6 +37,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
   onChange,
   openAipApiKey,
   onOpenAipApiKeyChange,
+  onLoadingChange,
 }) => {
   const [showAircraftSettings, setShowAircraftSettings] = useState(false);
   const [isLoadingArrivalData, setIsLoadingArrivalData] = useState(false);
@@ -95,6 +98,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
   ) => {
     if (!targetOaciOrName && !baseAero) return;
     setIsLoadingArrivalData(true);
+    if (onLoadingChange) onLoadingChange(true);
 
     const dateToUse = forcedDate || flightPlan.flightDate || new Date().toISOString().split('T')[0];
 
@@ -207,6 +211,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
       console.error('Error fetching arrival airport data:', err);
     } finally {
       setIsLoadingArrivalData(false);
+      if (onLoadingChange) onLoadingChange(false);
     }
   };
 
@@ -365,6 +370,30 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
       ...newWps[index],
       [field]: val,
     };
+    onChange({
+      ...flightPlan,
+      waypoints: newWps,
+    });
+  };
+
+  // Atomic update for selecting an aerodrome waypoint
+  const handleSelectAerodromeWaypoint = (index: number, aero: AerodromeInfo, defaultNotes: string) => {
+    const fullName = aero.oaci ? `${aero.oaci} ${aero.name}`.trim() : aero.name;
+    const newWps = flightPlan.waypoints.map((wp, i) => {
+      if (i !== index) return wp;
+      return {
+        ...wp,
+        name: fullName,
+        oaci: aero.oaci,
+        openAipId: aero.openAipId,
+        notes: defaultNotes,
+        frequencies: aero.frequencies,
+        lat: aero.lat,
+        lng: aero.lon,
+        elevationFt: aero.elevationFt,
+        runways: aero.runways,
+      };
+    });
     onChange({
       ...flightPlan,
       waypoints: newWps,
@@ -551,101 +580,107 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 text-slate-800 space-y-4">
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-3.5 sm:p-4 text-slate-800 space-y-4">
       {/* 1. TOP HEADER: Paramétrage direct & Box Totaux (Dist Tot / ETE Tot / Conso Tot) */}
       <div className="flex flex-col gap-2 pb-3 border-b border-slate-100">
-        {/* Ligne 1 : Avion, Conso, Vitesse propre & Date sur une seule ligne */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto pb-0.5">
-          {/* 1. Avion : Modèle | Immatriculation */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
-            <Plane className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-            <input
-              type="text"
-              value={flightPlan.aircraftModel || ''}
-              onChange={(e) => handleAircraftChange('aircraftModel', e.target.value)}
-              placeholder="—"
-              className="w-12 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
-              title="Cliquer pour changer le modèle d'avion"
-            />
-            <span className="text-slate-400 font-normal select-none">|</span>
-            <input
-              type="text"
-              value={flightPlan.aircraftReg || ''}
-              onChange={(e) => handleAircraftChange('aircraftReg', e.target.value.toUpperCase())}
-              placeholder="—"
-              className="w-16 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none uppercase placeholder:text-slate-400 placeholder:font-normal"
-              title="Cliquer pour changer l'immatriculation"
-            />
+        {/* Paramètres appareil : sur desktop 1 seule ligne, sur mobile 2 lignes (Ligne 1: Avion, Conso / Ligne 2: Vitesse, Date) sans scrollbar */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-2">
+          {/* Ligne 1 sur mobile : Avion (Modèle | Immatriculation) + Conso */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* 1. Avion : Modèle | Immatriculation */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
+              <Plane className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <input
+                type="text"
+                value={flightPlan.aircraftModel || ''}
+                onChange={(e) => handleAircraftChange('aircraftModel', e.target.value)}
+                placeholder="—"
+                className="w-12 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
+                title="Cliquer pour changer le modèle d'avion"
+              />
+              <span className="text-slate-400 font-normal select-none">|</span>
+              <input
+                type="text"
+                value={flightPlan.aircraftReg || ''}
+                onChange={(e) => handleAircraftChange('aircraftReg', e.target.value.toUpperCase())}
+                placeholder="—"
+                className="w-16 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none uppercase placeholder:text-slate-400 placeholder:font-normal"
+                title="Cliquer pour changer l'immatriculation"
+              />
+            </div>
+
+            {/* 2. Conso (sans flèches d'incrément, chiffres uniquement) */}
+            <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
+              <Fuel className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={flightPlan.fuelPerHour ? String(flightPlan.fuelPerHour) : ''}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/[^0-9.]/g, '');
+                  handleAircraftChange('fuelPerHour', clean === '' ? 0 : parseFloat(clean) || 0);
+                }}
+                placeholder="—"
+                className="w-9 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
+                title="Consommation horaire en L/h (chiffres uniquement)"
+              />
+              <span className="text-slate-500 font-normal text-[11px]">L/h</span>
+            </div>
           </div>
 
-          {/* 2. Conso (sans flèches d'incrément, chiffres uniquement) */}
-          <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
-            <Fuel className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <input
-              type="text"
-              inputMode="numeric"
-              value={flightPlan.fuelPerHour ? String(flightPlan.fuelPerHour) : ''}
-              onChange={(e) => {
-                const clean = e.target.value.replace(/[^0-9.]/g, '');
-                handleAircraftChange('fuelPerHour', clean === '' ? 0 : parseFloat(clean) || 0);
-              }}
-              placeholder="—"
-              className="w-9 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
-              title="Consommation horaire en L/h (chiffres uniquement)"
-            />
-            <span className="text-slate-500 font-normal text-[11px]">L/h</span>
-          </div>
+          {/* Ligne 2 sur mobile : Vitesse propre + Date */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* 3. Vitesse propre (sans flèches d'incrément, chiffres uniquement) */}
+            <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
+              <Gauge className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={flightPlan.cruiseSpeedKt ? String(flightPlan.cruiseSpeedKt) : ''}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/[^0-9]/g, '');
+                  handleAircraftChange('cruiseSpeedKt', clean === '' ? 0 : parseInt(clean, 10) || 0);
+                }}
+                placeholder="—"
+                className="w-9 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
+                title="Vitesse propre en kt (chiffres uniquement)"
+              />
+              <span className="text-slate-500 font-normal text-[11px]">kt</span>
+            </div>
 
-          {/* 3. Vitesse propre (sans flèches d'incrément, chiffres uniquement) */}
-          <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
-            <Gauge className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-            <input
-              type="text"
-              inputMode="numeric"
-              value={flightPlan.cruiseSpeedKt ? String(flightPlan.cruiseSpeedKt) : ''}
-              onChange={(e) => {
-                const clean = e.target.value.replace(/[^0-9]/g, '');
-                handleAircraftChange('cruiseSpeedKt', clean === '' ? 0 : parseInt(clean, 10) || 0);
-              }}
-              placeholder="—"
-              className="w-9 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
-              title="Vitesse propre en kt (chiffres uniquement)"
-            />
-            <span className="text-slate-500 font-normal text-[11px]">kt</span>
-          </div>
-
-          {/* 4. Date du vol - uniquement le picto bleu, le picto noir est retiré */}
-          <div
-            onClick={() => {
-              try {
-                dateInputRef.current?.showPicker?.();
-              } catch {
-                dateInputRef.current?.focus();
-              }
-            }}
-            className="relative flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs shadow-2xs hover:border-slate-400 hover:bg-slate-50 transition-colors cursor-pointer select-none shrink-0"
-            title="Cliquer pour choisir la date de vol"
-          >
-            <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0 pointer-events-none" />
-            <span className="text-[10px] text-slate-500 font-semibold uppercase pointer-events-none">Date :</span>
-            <span className="text-xs font-bold text-slate-900 pointer-events-none font-sans">
-              {formatFrenchDate(flightPlan.flightDate)}
-            </span>
-
-            <input
-              ref={dateInputRef}
-              type="date"
-              id="header-flight-date-input"
-              value={flightPlan.flightDate || ''}
-              onChange={(e) => handleAircraftChange('flightDate', e.target.value)}
-              onClick={(e) => {
+            {/* 4. Date du vol - uniquement le picto bleu, le picto noir est retiré */}
+            <div
+              onClick={() => {
                 try {
-                  (e.target as HTMLInputElement).showPicker?.();
-                } catch {}
+                  dateInputRef.current?.showPicker?.();
+                } catch {
+                  dateInputRef.current?.focus();
+                }
               }}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 date-picker-full-hit"
-              aria-label="Date du vol"
-            />
+              className="relative flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs shadow-2xs hover:border-slate-400 hover:bg-slate-50 transition-colors cursor-pointer select-none shrink-0"
+              title="Cliquer pour choisir la date de vol"
+            >
+              <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0 pointer-events-none" />
+              <span className="text-[10px] text-slate-500 font-semibold uppercase pointer-events-none">Date :</span>
+              <span className="text-xs font-bold text-slate-900 pointer-events-none font-sans">
+                {formatFrenchDate(flightPlan.flightDate)}
+              </span>
+
+              <input
+                ref={dateInputRef}
+                type="date"
+                id="header-flight-date-input"
+                value={flightPlan.flightDate || ''}
+                onChange={(e) => handleAircraftChange('flightDate', e.target.value)}
+                onClick={(e) => {
+                  try {
+                    (e.target as HTMLInputElement).showPicker?.();
+                  } catch {}
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 date-picker-full-hit"
+                aria-label="Date du vol"
+              />
+            </div>
           </div>
         </div>
 
@@ -867,6 +902,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                 });
               }}
               openAipApiKey={openAipApiKey}
+              onLoadingChange={onLoadingChange}
             />
           </div>
         </div>
@@ -881,11 +917,13 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
         {/* --- WAYPOINTS LOOP (Étapes intermédiaires) --- */}
         {flightPlan.waypoints.map((wp, wpIndex) => {
           const isAero = wp.type === 'aerodrome';
-          const prevLabel =
+          const prevRaw =
             wpIndex === 0
               ? 'PON'
               : flightPlan.waypoints[wpIndex - 1]?.name?.trim() || `WP ${wpIndex}`;
-          const currentLabel = wp.name?.trim() || `WP ${wpIndex + 1}`;
+          const currentRaw = wp.name?.trim() || `WP ${wpIndex + 1}`;
+          const prevLabel = wpIndex === 0 ? 'PON' : truncateWpName(prevRaw);
+          const currentLabel = truncateWpName(currentRaw);
           const legIndex = wpIndex;
           const leg = getLeg(legIndex);
 
@@ -962,15 +1000,10 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       id={`wp-${wp.id}-search`}
                       value={wp.name}
                       placeholder="Recherche OACI ou Nom aérodrome (ex: LFPX, LFOP)..."
-                      onSelect={(aero, notes) => {
-                        handleWaypointChange(wpIndex, 'name', `${aero.oaci} ${aero.name}`);
-                        handleWaypointChange(wpIndex, 'oaci', aero.oaci);
-                        handleWaypointChange(wpIndex, 'openAipId', aero.openAipId);
-                        handleWaypointChange(wpIndex, 'notes', notes);
-                        handleWaypointChange(wpIndex, 'frequencies', aero.frequencies);
-                      }}
+                      onSelect={(aero, notes) => handleSelectAerodromeWaypoint(wpIndex, aero, notes)}
                       onChangeText={(text) => handleWaypointChange(wpIndex, 'name', text)}
                       openAipApiKey={openAipApiKey}
+                      onLoadingChange={onLoadingChange}
                     />
                   ) : (
                     <input
@@ -1000,7 +1033,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                         id={`leg-${legIndex}-rm`}
                         value={leg.rm || ''}
                         onChange={(e) => handleLegChange(legIndex, 'rm', e.target.value)}
-                        placeholder="ex: 292°"
+                        placeholder="-"
                         className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
                           isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
                         }`}
@@ -1015,7 +1048,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                         id={`leg-${legIndex}-dist`}
                         value={leg.dist || ''}
                         onChange={(e) => handleLegChange(legIndex, 'dist', e.target.value)}
-                        placeholder="ex: 14"
+                        placeholder="-"
                         className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
                           isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
                         }`}
@@ -1030,7 +1063,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                         id={`leg-${legIndex}-alt`}
                         value={leg.alt || ''}
                         onChange={(e) => handleLegChange(legIndex, 'alt', e.target.value)}
-                        placeholder="ex: 2000 ft"
+                        placeholder="-"
                         className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
                           isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
                         }`}
@@ -1048,7 +1081,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                         id={`leg-${legIndex}-tSansVw`}
                         value={leg.tSansVw ?? leg.ete ?? leg.temps ?? ''}
                         onChange={(e) => handleLegChange(legIndex, 'tSansVw', e.target.value)}
-                        placeholder="ex: 12"
+                        placeholder="-"
                         className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
                           isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
                         }`}
@@ -1063,7 +1096,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                         id={`leg-${legIndex}-tAvecVw`}
                         value={leg.tAvecVw || ''}
                         onChange={(e) => handleLegChange(legIndex, 'tAvecVw', e.target.value)}
-                        placeholder="ex: 14"
+                        placeholder="-"
                         className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
                           isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
                         }`}
@@ -1107,14 +1140,14 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
         })}
 
         {/* --- BOUTONS AJOUT D'ÉTAPE --- */}
-        <div className="flex justify-center py-2 mb-1">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex justify-center py-2 mb-1 w-full">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 w-full">
             {/* Bouton Aérodrome : + en bleu clair, bordure bleue comme Départ, box bleue */}
             <button
               type="button"
               id="add-wp-aerodrome-btn"
               onClick={() => handleAddWaypoint('aerodrome')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-sky-50 text-sky-950 rounded-lg border-2 border-sky-600 ring-1 ring-sky-700/30 text-xs font-bold shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-sky-50 text-sky-950 rounded-lg border-2 border-sky-600 ring-1 ring-sky-700/30 text-xs font-bold shadow-xs transition-all cursor-pointer"
             >
               <span className="text-sky-500 font-extrabold text-sm leading-none">+</span>
               <Building2 className="w-3.5 h-3.5 text-sky-600" />
@@ -1126,7 +1159,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
               type="button"
               id="add-wp-custom-btn"
               onClick={() => handleAddWaypoint('custom')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-900 rounded-lg border-2 border-slate-700 ring-1 ring-slate-800/30 text-xs font-bold shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-100 text-slate-900 rounded-lg border-2 border-slate-700 ring-1 ring-slate-800/30 text-xs font-bold shadow-xs transition-all cursor-pointer"
             >
               <span className="text-slate-500 font-extrabold text-sm leading-none">+</span>
               <MapPin className="w-3.5 h-3.5 text-slate-900" />
@@ -1144,10 +1177,11 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
 
         {/* --- STEP FINAL: ARRIVÉE (Destination) --- */}
         {(() => {
-          const prevPointName =
+          const prevRaw =
             flightPlan.waypoints.length > 0
               ? flightPlan.waypoints[flightPlan.waypoints.length - 1]?.name?.trim() || `WP ${flightPlan.waypoints.length}`
               : 'PON';
+          const prevPointName = flightPlan.waypoints.length > 0 ? truncateWpName(prevRaw) : 'PON';
           const currentPointName = flightPlan.destination.name?.trim() || 'Arrivée';
           const destLegIndex = flightPlan.waypoints.length;
           const destLeg = getLeg(destLegIndex);
@@ -1182,6 +1216,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                     onChangeText={handleDestinationTextChange}
                     openAipApiKey={openAipApiKey}
                     isLoading={isLoadingArrivalData}
+                    onLoadingChange={onLoadingChange}
                   />
                 </div>
               </div>
@@ -1198,7 +1233,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       id={`leg-${destLegIndex}-rm`}
                       value={destLeg.rm || ''}
                       onChange={(e) => handleLegChange(destLegIndex, 'rm', e.target.value)}
-                      placeholder="ex: 292°"
+                      placeholder="-"
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
@@ -1211,7 +1246,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       id={`leg-${destLegIndex}-dist`}
                       value={destLeg.dist || ''}
                       onChange={(e) => handleLegChange(destLegIndex, 'dist', e.target.value)}
-                      placeholder="ex: 14"
+                      placeholder="-"
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
@@ -1224,7 +1259,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       id={`leg-${destLegIndex}-alt`}
                       value={destLeg.alt || ''}
                       onChange={(e) => handleLegChange(destLegIndex, 'alt', e.target.value)}
-                      placeholder="ex: 2000 ft"
+                      placeholder="-"
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
@@ -1240,7 +1275,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       id={`leg-${destLegIndex}-tSansVw`}
                       value={destLeg.tSansVw ?? destLeg.ete ?? destLeg.temps ?? ''}
                       onChange={(e) => handleLegChange(destLegIndex, 'tSansVw', e.target.value)}
-                      placeholder="ex: 12"
+                      placeholder="-"
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
@@ -1253,7 +1288,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       id={`leg-${destLegIndex}-tAvecVw`}
                       value={destLeg.tAvecVw || ''}
                       onChange={(e) => handleLegChange(destLegIndex, 'tAvecVw', e.target.value)}
-                      placeholder="ex: 14"
+                      placeholder="-"
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
                     />
                   </div>

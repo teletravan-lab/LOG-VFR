@@ -13,6 +13,7 @@ interface AerodromeSearchInputProps {
   openAipApiKey?: string;
   className?: string;
   isLoading?: boolean;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 export const AerodromeSearchInput: React.FC<AerodromeSearchInputProps> = ({
@@ -24,6 +25,7 @@ export const AerodromeSearchInput: React.FC<AerodromeSearchInputProps> = ({
   openAipApiKey,
   className = '',
   isLoading: externalLoading = false,
+  onLoadingChange,
 }) => {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState<AerodromeIndexEntry[]>([]);
@@ -92,6 +94,7 @@ export const AerodromeSearchInput: React.FC<AerodromeSearchInputProps> = ({
     setIsOpen(false);
     setIsFocused(false);
     setIsLoading(true);
+    if (onLoadingChange) onLoadingChange(true);
 
     try {
       const details = await fetchAerodromeDetails(
@@ -115,6 +118,7 @@ export const AerodromeSearchInput: React.FC<AerodromeSearchInputProps> = ({
       );
     } finally {
       setIsLoading(false);
+      if (onLoadingChange) onLoadingChange(false);
     }
   };
 

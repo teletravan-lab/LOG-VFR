@@ -1,6 +1,7 @@
 import React from 'react';
 import { FlightPlan, NavLeg } from '../types';
 import { LogTableA5, LogTableSegment } from './LogTableA5';
+import { truncateWpName } from '../lib/formatters';
 
 interface A5KneeboardViewProps {
   flightPlan: FlightPlan;
@@ -142,10 +143,10 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
       const fromName =
         k === 0
           ? 'PON'
-          : flightPlan.waypoints[k - 1]?.name?.trim() || `WP ${k}`;
+          : truncateWpName(flightPlan.waypoints[k - 1]?.name?.trim()) || `WP ${k}`;
       const toName =
         k < flightPlan.waypoints.length
-          ? flightPlan.waypoints[k]?.name?.trim() || `WP ${k + 1}`
+          ? truncateWpName(flightPlan.waypoints[k]?.name?.trim()) || `WP ${k + 1}`
           : flightPlan.destination.name?.trim() || (isPrintMode ? '__________________________' : 'Arrivée');
 
       const pt = k < flightPlan.waypoints.length ? flightPlan.waypoints[k] : flightPlan.destination;

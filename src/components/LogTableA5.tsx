@@ -2,6 +2,7 @@ import React from 'react';
 import { Sunset } from 'lucide-react';
 import { Waypoint, NavLeg } from '../types';
 import { FRENCH_AERODROMES } from '../data/aerodromes';
+import { truncateWpName, getBranchEndRadioNotes } from '../lib/formatters';
 
 export interface LogTableSegment {
   point?: Waypoint;
@@ -170,10 +171,10 @@ const destFreqs = {
       const fromName =
         k === 0
           ? 'PON'
-          : waypoints[k - 1]?.name?.trim() || `WP ${k}`;
+          : truncateWpName(waypoints[k - 1]?.name?.trim()) || `WP ${k}`;
       const toName =
         k < waypoints.length
-          ? waypoints[k]?.name?.trim() || `WP ${k + 1}`
+          ? truncateWpName(waypoints[k]?.name?.trim()) || `WP ${k + 1}`
           : destination.name?.trim() || (isPrintMode ? '__________________________' : 'Arrivée');
 
       const pt = k < waypoints.length ? waypoints[k] : destination;
@@ -312,7 +313,7 @@ const destFreqs = {
             {/* Left 2/3 (8 columns): Sub-row 1 (Numéro de branche : Départ => Arrivée) + Sub-row 2 (Paramètres de vol) */}
             <div className="col-span-8 border-r-2 border-black flex flex-col">
               {/* SUB-ROW 1: LIEU & BRANCHE (ex: 1 : PON => Waypoint suivant) - Espace vertical réduit significativement */}
-              <div className="px-1.5 py-0.5 border-b border-black flex flex-col justify-center bg-slate-50/40">
+              <div className="px-1.5 py-0.5 border-b border-black flex flex-col justify-center bg-slate-50/40 min-h-[22px]">
                 <div className="flex items-center gap-1.5 flex-wrap leading-tight">
                   <span className="font-extrabold text-[10.5px] uppercase tracking-tight text-black">
                     {branchNumber} :
@@ -321,17 +322,6 @@ const destFreqs = {
                     {fromName} =&gt; {toName || (isPrintMode ? '__________________________' : 'Waypoint suivant')}
                   </span>
                 </div>
-                {radioSummary ? (
-                  <div className="mt-0.5">
-                    <span className="font-mono text-[8.5px] font-semibold text-slate-700 bg-slate-200/70 px-1 py-0.2 rounded-xs inline-block">
-                      {radioSummary}
-                    </span>
-                  </div>
-                ) : point?.coordinates ? (
-                  <span className="text-[8px] text-slate-600 font-mono mt-0.5">
-                    {point.coordinates}
-                  </span>
-                ) : null}
               </div>
 
               {/* SUB-ROW 2: PARAMETRES DE VOL (6 colonnes : RM | DIST | ALTITUDE | T SANS / AC VW | ETA | ATA) */}
@@ -505,22 +495,34 @@ const destFreqs = {
             </div>
 
             {/* Right 1/3 (4 columns): SINGLE MERGED NOTES CELL across both rows */}
-            <div className="col-span-4 p-1.5 flex flex-col justify-start bg-white">
-              {isPrintMode ? (
-                <div className={`text-[9.5px] font-mono leading-tight whitespace-pre-line text-black w-full h-full ${notesCellMinHeightClass}`}>
-                  {leg.notes || ''}
+            {(() => {
+              const endRadioNotes = getBranchEndRadioNotes(point);
+              return (
+                <div className="col-span-4 p-1.5 flex flex-col justify-start bg-white">
+                  {endRadioNotes && (
+                    <div className="font-mono text-[8.5px] font-semibold text-slate-900 leading-tight mb-1 pb-0.5 border-b border-slate-200 select-all">
+                      {endRadioNotes}
+                    </div>
+                  )}
+                  {isPrintMode ? (
+                    <div
+                      className={`text-[9.5px] font-mono leading-tight whitespace-pre-line text-black w-full flex-1 ${notesCellMinHeightClass}`}
+                    >
+                      {leg.notes || ''}
+                    </div>
+                  ) : (
+                    <textarea
+                      id={`a5-leg-${legIndex}-notes`}
+                      value={leg.notes || ''}
+                      onChange={(e) => onUpdateLeg?.(legIndex, 'notes', e.target.value)}
+                      placeholder=""
+                      rows={endRadioNotes ? 1 : 2}
+                      className="w-full flex-1 text-[9.5px] font-mono p-0.5 border-0 focus:ring-1 focus:ring-black bg-transparent resize-none leading-relaxed"
+                    />
+                  )}
                 </div>
-              ) : (
-                <textarea
-                  id={`a5-leg-${legIndex}-notes`}
-                  value={leg.notes || ''}
-                  onChange={(e) => onUpdateLeg?.(legIndex, 'notes', e.target.value)}
-                  placeholder=""
-                  rows={2}
-                  className="w-full h-full text-[9.5px] font-mono p-1 border-0 focus:ring-1 focus:ring-black bg-transparent resize-none leading-relaxed"
-                />
-              )}
-            </div>
+              );
+            })()}
           </div>
         );
       })}
