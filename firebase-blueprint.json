@@ -18,23 +18,31 @@
     },
     "flightLog": {
       "title": "flightLog",
-      "description": "Saved flight plan log with share code",
+      "description": "Saved flight plan log with share code JJ-MM-XXXXXX",
       "type": "object",
       "properties": {
-        "shareCode": {
+        "id": {
           "type": "string",
-          "description": "Unique code for the flight plan log"
+          "description": "Unique log identifier in format JJ-MM-XXXXXX"
+        },
+        "flightPlan": {
+          "type": "object",
+          "description": "Flight plan details"
         },
         "createdAt": {
           "type": "string",
           "description": "ISO creation date"
         },
-        "flightPlan": {
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO last update date"
+        },
+        "expiresAt": {
           "type": "object",
-          "description": "Flight plan details"
+          "description": "Firestore Timestamp expiring in 6 months"
         }
       },
-      "required": ["shareCode", "createdAt"]
+      "required": ["id", "flightPlan"]
     }
   },
   "firestore": {

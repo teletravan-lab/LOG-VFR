@@ -214,12 +214,11 @@ const destFreqs = {
   };
 
   const numLegsOnPage = activeSegments.filter((s) => !s.isOriginDeparture).length;
-  const paramRowMinHeightClass =
-    numLegsOnPage <= 2 ? 'min-h-[48px]' : numLegsOnPage === 3 ? 'min-h-[38px]' : 'min-h-[31px]';
-  const notesCellMinHeightClass =
-    numLegsOnPage <= 2 ? 'min-h-[74px]' : numLegsOnPage === 3 ? 'min-h-[58px]' : 'min-h-[48px]';
-  const arrivalBlockMinHeightClass =
-    numLegsOnPage <= 2 ? 'min-h-[72px]' : numLegsOnPage === 3 ? 'min-h-[64px]' : 'min-h-[56px]';
+  // Hauteurs fixes, identiques quel que soit le nombre de tronçons.
+  // Valeurs reprises du log vierge (cas 4 tronçons ou plus).
+  const paramRowMinHeightClass = 'min-h-[31px]';
+  const notesCellMinHeightClass = 'min-h-[48px]';
+  const arrivalBlockMinHeightClass = 'min-h-[56px]';
 
   return (
     <div className="w-full border-2 border-black text-black bg-white select-text">

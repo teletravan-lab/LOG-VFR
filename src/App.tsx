@@ -17,6 +17,9 @@ import {
   ExternalLink,
   Cloud,
   Calculator,
+  Save,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { FlightPlan, NavLeg, Waypoint } from './types';
 import { A5KneeboardView } from './components/A5KneeboardView';
@@ -25,6 +28,12 @@ import { FRENCH_AERODROMES } from './data/aerodromes';
 import { DEFAULT_OPENAIP_KEY } from './services/openaip';
 import { subscribeToAnalytics, incrementPrintCount } from './services/firebase';
 import { WindCalculator } from './components/WindCalculator';
+import {
+  generateLogId,
+  saveFlightLogToFirestore,
+  loadFlightLogFromFirestore,
+  getLogUrl,
+} from './services/logStore';
 
 const BLANK_FLIGHT_PLAN: FlightPlan = {
   aircraftModel: '',
@@ -118,19 +127,6 @@ export default function App() {
           consoTotale: '',
           notes: '',
         },
-      ],
-      legs: [
-        {
-          id: 'leg-0',
-          alt: '',
-          rm: '',
-          dist: '',
-          ete: '',
-          temps: '',
-          eta: '',
-          consoTotale: '',
-          notes: '',
-        },
         {
           id: 'leg-1',
           alt: '',
@@ -154,6 +150,243 @@ export default function App() {
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showWindCalc, setShowWindCalc] = useState<boolean>(false);
   const [logsCreatedCount, setLogsCreatedCount] = useState<number | null>(null);
+
+  // --- Gestion de la persistance Firestore des logs de vol ---
+  const [logId, setLogId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      return searchParams.get('log');
+    }
+    return null;
+  });
+
+  type SaveState = 'unsaved' | 'saving' | 'saved' | 'error';
+  const [saveStatus, setSaveStatus] = useState<{ state: SaveState; label: string }>({
+    state: 'unsaved',
+    label: 'Non enregistré',
+  });
+
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+
+  const createdAtRef = useRef<string | undefined>(undefined);
+  const lastSavedHashRef = useRef<string>('');
+  const debounceTimerRef = useRef<NodeJS.Timeout | number | null>(null);
+  const flightPlanRef = useRef<FlightPlan>(flightPlan);
+  const isInitialMountRef = useRef<boolean>(true);
+
+  // Synchronise le ref sur le plan de vol courant
+  useEffect(() => {
+    flightPlanRef.current = flightPlan;
+  }, [flightPlan]);
+
+  // Chargement initial au montage : URL (?log=...) prioritaire, sinon localStorage
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const paramLogId = searchParams.get('log');
+
+    if (paramLogId) {
+      setSaveStatus({ state: 'saving', label: 'Chargement...' });
+      loadFlightLogFromFirestore(paramLogId)
+        .then((result) => {
+          if (result && result.flightPlan) {
+            setFlightPlan(result.flightPlan);
+            flightPlanRef.current = result.flightPlan;
+            createdAtRef.current = result.createdAt;
+            lastSavedHashRef.current = JSON.stringify(result.flightPlan);
+            setLogId(paramLogId);
+            localStorage.setItem('skylog_current_log_id', paramLogId);
+            const timeStr = new Date().toLocaleTimeString('fr-FR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            setSaveStatus({ state: 'saved', label: `Enregistré à ${timeStr}` });
+          } else {
+            setSaveStatus({ state: 'error', label: 'Log introuvable' });
+          }
+        })
+        .catch(() => {
+          setSaveStatus({ state: 'error', label: "Échec de l'enregistrement" });
+        });
+    } else {
+      // Aucun paramètre d'URL : vérifie si un brouillon intermédiaire existe en local
+      try {
+        const savedDraft = localStorage.getItem('skylog_intermediate_plan');
+        if (savedDraft) {
+          const parsed = JSON.parse(savedDraft);
+          if (parsed && typeof parsed === 'object' && parsed.aircraftModel) {
+            setFlightPlan(parsed);
+            flightPlanRef.current = parsed;
+          }
+        }
+      } catch (e) {
+        console.warn('Erreur lecture brouillon local:', e);
+      }
+    }
+  }, []);
+
+  // Fonction centrale d'exécution d'une sauvegarde Firestore
+  const executeSave = async (targetLogId: string, currentPlan: FlightPlan) => {
+    setIsSaving(true);
+    setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+    try {
+      const res = await saveFlightLogToFirestore(targetLogId, currentPlan, createdAtRef.current);
+      if (res.success) {
+        lastSavedHashRef.current = JSON.stringify(currentPlan);
+        const timeStr = res.savedAt.toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        setSaveStatus({ state: 'saved', label: `Enregistré à ${timeStr}` });
+      } else {
+        setSaveStatus({ state: 'error', label: "Échec de l'enregistrement" });
+      }
+    } catch {
+      setSaveStatus({ state: 'error', label: "Échec de l'enregistrement" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Déclenchement automatique avec debounce de 1500 ms lors de toute modification
+  useEffect(() => {
+    // Sauvegarde intermédiaire locale systématique
+    try {
+      localStorage.setItem('skylog_intermediate_plan', JSON.stringify(flightPlan));
+    } catch (e) {
+      // ignore
+    }
+
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
+
+    if (!logId) {
+      // Pas encore sauvegardé sur Firestore
+      return;
+    }
+
+    const currentHash = JSON.stringify(flightPlan);
+    if (currentHash === lastSavedHashRef.current) {
+      // Données identiques : aucune écriture inutile
+      return;
+    }
+
+    // Données modifiées : passage en état "Enregistrement..." et debounce 1500 ms
+    setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current as any);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      executeSave(logId, flightPlan);
+    }, 1500);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current as any);
+      }
+    };
+  }, [flightPlan, logId]);
+
+  // Sauvegarde forcée lors du changement de visibilité (départ / masquage de l'onglet)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && logId) {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current as any);
+          debounceTimerRef.current = null;
+        }
+        if (JSON.stringify(flightPlanRef.current) !== lastSavedHashRef.current) {
+          executeSave(logId, flightPlanRef.current);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [logId]);
+
+  // Action clic sur le bouton "Sauvegarder"
+  const handleManualSave = async () => {
+    if (!logId) {
+      // Premier enregistrement : génère l'identifiant unique JJ-MM-XXXXXX une fois pour toutes
+      const newLogId = generateLogId();
+      setLogId(newLogId);
+      createdAtRef.current = new Date().toISOString();
+      localStorage.setItem('skylog_current_log_id', newLogId);
+
+      // Met à jour l'URL sans recharger la page
+      const newUrl = `${window.location.pathname}?log=${newLogId}`;
+      window.history.replaceState(null, '', newUrl);
+
+      await executeSave(newLogId, flightPlan);
+    } else {
+      // Document déjà existant : force une sauvegarde immédiate
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current as any);
+        debounceTimerRef.current = null;
+      }
+      await executeSave(logId, flightPlan);
+    }
+  };
+
+  // Copie de l'URL complète avec feedback
+  const handleCopyUrl = async () => {
+    if (!logId) return;
+    const url = getLogUrl(logId);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Erreur lors de la copie du lien:', err);
+    }
+  };
+
+  // Style de la pastille et du texte selon l'état d'enregistrement
+  const getStatusBadge = () => {
+    switch (saveStatus.state) {
+      case 'saving':
+        return {
+          dotClass: 'bg-amber-500 animate-pulse',
+          textClass: 'text-amber-800 font-semibold',
+        };
+      case 'saved':
+        return {
+          dotClass: 'bg-emerald-500',
+          textClass: 'text-emerald-800 font-semibold',
+        };
+      case 'error':
+        return {
+          dotClass: 'bg-rose-500',
+          textClass: 'text-rose-800 font-semibold',
+        };
+      case 'unsaved':
+      default:
+        return {
+          dotClass: 'bg-slate-400',
+          textClass: 'text-slate-600 font-semibold',
+        };
+    }
+  };
+
+  const statusBadge = getStatusBadge();
+  const logUrl = logId ? getLogUrl(logId) : '';
 
   // Subscribe to live Firestore analytics counter
   useEffect(() => {
@@ -807,20 +1040,83 @@ export default function App() {
             activeTab === 'editor' ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          {/* Preview Toolbar */}
-                    <div className="w-full max-w-[148mm] flex items-center justify-end mb-2 text-xs text-slate-600 px-1">
-           
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                id="quick-print-preview-btn"
-                onClick={() => handlePrint()}
-                className="px-4 py-1.5 sm:py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Imprimer</span>
-              </button>
+          {/* Preview Toolbar (Sauvegarder à gauche, Imprimer à droite) */}
+          <div className="w-full max-w-[148mm] flex flex-col gap-2 mb-2 px-1">
+            <div className="flex items-center justify-between gap-2">
+              {/* GAUCHE : Bouton Sauvegarder + Pastille et texte de statut */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  id="save-flight-log-btn"
+                  onClick={handleManualSave}
+                  disabled={isSaving}
+                  className="px-3.5 py-1.5 sm:py-2 bg-sky-700 hover:bg-sky-800 disabled:opacity-60 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
+                  title="Enregistrer le plan de vol dans Firestore"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Sauvegarder</span>
+                </button>
+
+                {/* Pastille d'état (toujours accompagnée de son libellé texte) */}
+                <div
+                  id="log-save-status-badge"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 rounded-lg border border-slate-200"
+                >
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusBadge.dotClass}`} />
+                  <span className={`text-xs ${statusBadge.textClass}`}>{saveStatus.label}</span>
+                </div>
+              </div>
+
+              {/* DROITE : Bouton Imprimer */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  id="quick-print-preview-btn"
+                  onClick={() => handlePrint()}
+                  className="px-4 py-1.5 sm:py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Imprimer</span>
+                </button>
+              </div>
             </div>
+
+            {/* URL complète affichée dès que le document est sauvegardé */}
+            {logId && (
+              <div
+                id="log-share-url-container"
+                className="w-full bg-slate-50 border border-slate-200/90 rounded-lg p-2.5 flex flex-col gap-1 text-xs shadow-2xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 bg-white border border-slate-200 rounded px-2.5 py-1.5 text-slate-700 font-mono text-[11px] sm:text-xs select-all overflow-hidden text-ellipsis whitespace-nowrap">
+                    <Share2 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <span className="truncate">{logUrl}</span>
+                  </div>
+                  <button
+                    type="button"
+                    id="copy-log-url-btn"
+                    onClick={handleCopyUrl}
+                    className="px-3 py-1.5 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 text-white rounded text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer shadow-2xs"
+                    title="Copier le lien complet"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Copié !</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copier</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <span className="text-[11px] text-slate-500 italic pl-0.5">
+                  Conservez ce lien pour retrouver et modifier ce log.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Interactive A5 Sheet Preview */}

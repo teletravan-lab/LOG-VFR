@@ -11,9 +11,10 @@ service cloud.firestore {
 
     // Flight logs storage
     match /flightLogs/{logId} {
-      allow read: if true;
-      allow create: if true;
-      allow update, delete: if false;
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if true;
+      allow delete: if false;
     }
   }
 }

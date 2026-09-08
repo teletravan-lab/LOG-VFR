@@ -21,7 +21,7 @@ import {
 import { FlightPlan, Waypoint, NavLeg, WaypointType, AerodromeInfo } from '../types';
 import { AerodromeSearchInput } from './AerodromeSearchInput';
 import { fetchArrivalAirportData, fetchSunTimes } from '../services/openaip';
-import { FRENCH_AERODROMES } from '../data/aerodromes';
+import { AerodromeIndexEntry, FRENCH_AERODROMES } from '../data/aerodromes';
 
 interface FlightPlanEditorProps {
   flightPlan: FlightPlan;
@@ -86,7 +86,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
   // Automated fetch of arrival airport data from OpenAIP & ephemeris from sunrise-sunset
   const triggerFetchArrivalData = async (
     targetOaciOrName: string,
-    baseAero?: AerodromeInfo,
+    baseAero?: AerodromeInfo | AerodromeIndexEntry,
     forcedDate?: string
   ) => {
     if (!targetOaciOrName || !targetOaciOrName.trim()) return;
@@ -95,9 +95,15 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
     const dateToUse = forcedDate || flightPlan.flightDate || new Date().toISOString().split('T')[0];
 
     try {
+      const baseLat = baseAero && 'lat' in baseAero ? baseAero.lat : undefined;
+      const baseLng = baseAero && 'lon' in baseAero ? baseAero.lon : undefined;
+      const baseElev = baseAero && 'elevationFt' in baseAero ? baseAero.elevationFt : undefined;
+      const baseRunways = baseAero && 'runways' in baseAero ? baseAero.runways : undefined;
+      const baseFreqs = baseAero && 'frequencies' in baseAero ? baseAero.frequencies : undefined;
+
       // 1. If we already have coordinates, fetch sun times immediately for instant responsiveness
-      const currentLat = flightPlan.destination.lat ?? baseAero?.lat;
-      const currentLng = flightPlan.destination.lng ?? baseAero?.lon;
+      const currentLat = flightPlan.destination.lat ?? baseLat;
+      const currentLng = flightPlan.destination.lng ?? baseLng;
       let instantSunTimes = null;
       if (currentLat !== undefined && currentLng !== undefined) {
         instantSunTimes = await fetchSunTimes(currentLat, currentLng, dateToUse);
@@ -119,7 +125,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
               : targetOaciOrName);
 
         const mergedFrequencies = {
-          ...(baseAero?.frequencies || {}),
+          ...(baseFreqs || {}),
           ...data.frequencies,
         };
 
@@ -131,18 +137,18 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             oaci: oaciCode,
             coordinates: data.elevationFt
               ? `Alt ${data.elevationFt}ft`
-              : baseAero?.elevationFt
-              ? `Alt ${baseAero.elevationFt}ft`
+              : baseElev
+              ? `Alt ${baseElev}ft`
               : '',
-            elevationFt: data.elevationFt ?? baseAero?.elevationFt,
-            runways: data.runways || baseAero?.runways || '',
+            elevationFt: data.elevationFt ?? baseElev,
+            runways: data.runways || baseRunways || '',
             tdpQnhFt: data.tdpQnhFt || '',
             integration: '',
             notes: flightPlan.destination.tableNotes || '',
             tableNotes: flightPlan.destination.tableNotes || '',
             frequencies: mergedFrequencies,
-            lat: data.lat ?? baseAero?.lat,
-            lng: data.lng ?? baseAero?.lon,
+            lat: data.lat ?? baseLat,
+            lng: data.lng ?? baseLng,
             sunriseUtc: data.sunriseUtc || instantSunTimes?.sunriseUtc,
             sunriseLocal: data.sunriseLocal || instantSunTimes?.sunriseLocal,
             sunsetUtc: data.sunsetUtc || instantSunTimes?.sunsetUtc,
@@ -162,14 +168,14 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             ...flightPlan.destination,
             name: `${baseAero.oaci} ${baseAero.name}`,
             oaci: baseAero.oaci,
-            coordinates: baseAero.elevationFt ? `Alt ${baseAero.elevationFt}ft` : '',
-            elevationFt: baseAero.elevationFt,
-            runways: baseAero.runways || '',
+            coordinates: baseElev ? `Alt ${baseElev}ft` : '',
+            elevationFt: baseElev,
+            runways: baseRunways || '',
             notes: flightPlan.destination.tableNotes || '',
             tableNotes: flightPlan.destination.tableNotes || '',
-            frequencies: baseAero.frequencies,
-            lat: baseAero.lat,
-            lng: baseAero.lon,
+            frequencies: baseFreqs,
+            lat: baseLat,
+            lng: baseLng,
             sunriseUtc: instantSunTimes?.sunriseUtc,
             sunriseLocal: instantSunTimes?.sunriseLocal,
             sunsetUtc: instantSunTimes?.sunsetUtc,

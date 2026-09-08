@@ -30,7 +30,7 @@ export function subscribeToAnalytics(callback: (count: number) => void): () => v
     (snapshot) => {
       if (!snapshot.exists()) {
         // Cache local vide : on attend la réponse du serveur avant de conclure.
-        if (snapshot.metadata.fromCache) return;
+        if ((snapshot as any).metadata?.fromCache) return;
         // Le serveur confirme que le document n'existe pas encore.
         callback(0);
         return;
