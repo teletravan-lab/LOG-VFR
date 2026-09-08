@@ -587,7 +587,7 @@ export default function App() {
           </div>
 
           {/* 3 Header Items: Météo & Notam, Calculette Vent ETE, Imprimer log vierge */}
-                   <div className="flex-1 flex items-center justify-center gap-2.5 sm:gap-3 flex-wrap">
+                               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2.5 sm:gap-3">
             {/* 1. Météo et notam Menu */}
             <div className="relative" ref={weatherMenuRef}>
               <button
@@ -713,26 +713,25 @@ export default function App() {
             </div>
 
             {/* 2. Calculette Vent ETE (Pour le moment ne fait rien) */}
-                        <div className="relative">
-              <button
-                type="button"
-                id="calculette-ete-header-btn"
-                className="bg-slate-200 hover:bg-slate-100 text-slate-900 border border-slate-300 font-semibold px-3 py-1 rounded text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-                             onClick={() => setShowWindCalc((v) => !v)}
-
-                title="Calculette Vent ETE"
-              >
-                <Calculator className="w-3.5 h-3.5 text-slate-700" />
-                <span>Calculette Vent ETE</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-700" />
-              </button>
-              <WindCalculator
-        isOpen={showWindCalc}
-        onClose={() => setShowWindCalc(false)}
-        aircraftModel={flightPlan.aircraftModel}
-        cruiseSpeedKt={flightPlan.cruiseSpeedKt}
-      />
-            </div>
+                                     <div className="relative">
+                <button
+                  type="button"
+                  id="calculette-ete-header-btn"
+                  className="bg-slate-200 hover:bg-slate-100 text-slate-900 border border-slate-300 font-semibold px-3 py-1 rounded text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  onClick={() => setShowWindCalc((v) => !v)}
+                  title="Calculette Vent ETE"
+                >
+                  <Calculator className="w-3.5 h-3.5 text-slate-700" />
+                  <span>Calculette Vent ETE</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-700" />
+                </button>
+                <WindCalculator
+                  isOpen={showWindCalc}
+                  onClose={() => setShowWindCalc(false)}
+                  aircraftModel={flightPlan.aircraftModel}
+                  cruiseSpeedKt={flightPlan.cruiseSpeedKt}
+                />
+              </div>
 
             {/* 3. Imprimer log vierge (fond sombre d'origine, contour et texte grisés subtilement plus clairs) */}
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col items-center">
@@ -854,13 +853,6 @@ export default function App() {
           />
         </div>
       </div>
-
-            <WindCalculator
-        isOpen={showWindCalc}
-        onClose={() => setShowWindCalc(false)}
-        aircraftModel={flightPlan.aircraftModel}
-        cruiseSpeedKt={flightPlan.cruiseSpeedKt}
-      />
 
       {/* 4. HELP & PRINTING GUIDE MODAL */}
       {showHelpModal && (
