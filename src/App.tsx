@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Printer,
   Plane,
@@ -11,7 +11,6 @@ import {
   Maximize2,
   Minimize2,
   HelpCircle,
-  Share2,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
@@ -32,8 +31,35 @@ import {
   generateLogId,
   saveFlightLogToFirestore,
   loadFlightLogFromFirestore,
-  getLogUrl,
 } from './services/logStore';
+
+const SHORT_DOMAIN = 'https://logv.fr'; // vide = utiliser l'URL réelle
+
+function getLogUrls(id: string): { copyUrl: string; displayUrl: string } {
+  if (SHORT_DOMAIN && SHORT_DOMAIN.trim() !== '') {
+    const base = SHORT_DOMAIN.trim().replace(/\/+$/, '');
+    const url = `${base}/?log=${id}`;
+    return {
+      copyUrl: url,
+      displayUrl: url,
+    };
+  }
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const copyUrl = `${origin}${pathname}?log=${id}`;
+
+  let domainPrefix = origin;
+  if (domainPrefix.length > 24) {
+    domainPrefix = `${domainPrefix.slice(0, 20)}…`;
+  }
+  const displayUrl = `${domainPrefix}?log=${id}`;
+
+  return {
+    copyUrl,
+    displayUrl,
+  };
+}
 
 const BLANK_FLIGHT_PLAN: FlightPlan = {
   aircraftModel: '',
@@ -174,6 +200,11 @@ export default function App() {
   const debounceTimerRef = useRef<NodeJS.Timeout | number | null>(null);
   const flightPlanRef = useRef<FlightPlan>(flightPlan);
   const isInitialMountRef = useRef<boolean>(true);
+  const saveStatusRef = useRef<SaveState>('unsaved');
+
+  useEffect(() => {
+    saveStatusRef.current = saveStatus.state;
+  }, [saveStatus.state]);
 
   // Synchronise le ref sur le plan de vol courant
   useEffect(() => {
@@ -186,7 +217,7 @@ export default function App() {
     const paramLogId = searchParams.get('log');
 
     if (paramLogId) {
-      setSaveStatus({ state: 'saving', label: 'Chargement...' });
+      setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
       loadFlightLogFromFirestore(paramLogId)
         .then((result) => {
           if (result && result.flightPlan) {
@@ -196,17 +227,13 @@ export default function App() {
             lastSavedHashRef.current = JSON.stringify(result.flightPlan);
             setLogId(paramLogId);
             localStorage.setItem('skylog_current_log_id', paramLogId);
-            const timeStr = new Date().toLocaleTimeString('fr-FR', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-            setSaveStatus({ state: 'saved', label: `Enregistré à ${timeStr}` });
+            setSaveStatus({ state: 'saved', label: 'Enregistré' });
           } else {
-            setSaveStatus({ state: 'error', label: 'Log introuvable' });
+            setSaveStatus({ state: 'error', label: 'Échec' });
           }
         })
         .catch(() => {
-          setSaveStatus({ state: 'error', label: "Échec de l'enregistrement" });
+          setSaveStatus({ state: 'error', label: 'Échec' });
         });
     } else {
       // Aucun paramètre d'URL : vérifie si un brouillon intermédiaire existe en local
@@ -228,21 +255,19 @@ export default function App() {
   // Fonction centrale d'exécution d'une sauvegarde Firestore
   const executeSave = async (targetLogId: string, currentPlan: FlightPlan) => {
     setIsSaving(true);
-    setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+    if (saveStatusRef.current !== 'error') {
+      setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+    }
     try {
       const res = await saveFlightLogToFirestore(targetLogId, currentPlan, createdAtRef.current);
       if (res.success) {
         lastSavedHashRef.current = JSON.stringify(currentPlan);
-        const timeStr = res.savedAt.toLocaleTimeString('fr-FR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        setSaveStatus({ state: 'saved', label: `Enregistré à ${timeStr}` });
+        setSaveStatus({ state: 'saved', label: 'Enregistré' });
       } else {
-        setSaveStatus({ state: 'error', label: "Échec de l'enregistrement" });
+        setSaveStatus({ state: 'error', label: 'Échec' });
       }
     } catch {
-      setSaveStatus({ state: 'error', label: "Échec de l'enregistrement" });
+      setSaveStatus({ state: 'error', label: 'Échec' });
     } finally {
       setIsSaving(false);
     }
@@ -273,8 +298,10 @@ export default function App() {
       return;
     }
 
-    // Données modifiées : passage en état "Enregistrement..." et debounce 1500 ms
-    setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+    // Données modifiées : passage en état "Enregistrement..." si pas en erreur
+    if (saveStatusRef.current !== 'error') {
+      setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+    }
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current as any);
@@ -312,7 +339,7 @@ export default function App() {
     };
   }, [logId]);
 
-  // Action clic sur le bouton "Sauvegarder"
+  // Action clic sur le bouton "Sauvegarder" ou "Échec — Réessayer"
   const handleManualSave = async () => {
     if (!logId) {
       // Premier enregistrement : génère l'identifiant unique JJ-MM-XXXXXX une fois pour toutes
@@ -325,27 +352,32 @@ export default function App() {
       const newUrl = `${window.location.pathname}?log=${newLogId}`;
       window.history.replaceState(null, '', newUrl);
 
+      setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
       await executeSave(newLogId, flightPlan);
     } else {
-      // Document déjà existant : force une sauvegarde immédiate
+      // Document déjà existant ou relance après échec : force une sauvegarde immédiate
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current as any);
         debounceTimerRef.current = null;
       }
+      setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
       await executeSave(logId, flightPlan);
     }
   };
 
-  // Copie de l'URL complète avec feedback
+  // Calcul mémorisé des URLs (statique après la première sauvegarde)
+  const logUrls = useMemo(() => (logId ? getLogUrls(logId) : { copyUrl: '', displayUrl: '' }), [logId]);
+
+  // Copie de l'URL complète dans le presse-papiers avec feedback
   const handleCopyUrl = async () => {
     if (!logId) return;
-    const url = getLogUrl(logId);
+    const { copyUrl } = getLogUrls(logId);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(copyUrl);
       } else {
         const textArea = document.createElement('textarea');
-        textArea.value = url;
+        textArea.value = copyUrl;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand('copy');
@@ -357,36 +389,6 @@ export default function App() {
       console.error('Erreur lors de la copie du lien:', err);
     }
   };
-
-  // Style de la pastille et du texte selon l'état d'enregistrement
-  const getStatusBadge = () => {
-    switch (saveStatus.state) {
-      case 'saving':
-        return {
-          dotClass: 'bg-amber-500 animate-pulse',
-          textClass: 'text-amber-800 font-semibold',
-        };
-      case 'saved':
-        return {
-          dotClass: 'bg-emerald-500',
-          textClass: 'text-emerald-800 font-semibold',
-        };
-      case 'error':
-        return {
-          dotClass: 'bg-rose-500',
-          textClass: 'text-rose-800 font-semibold',
-        };
-      case 'unsaved':
-      default:
-        return {
-          dotClass: 'bg-slate-400',
-          textClass: 'text-slate-600 font-semibold',
-        };
-    }
-  };
-
-  const statusBadge = getStatusBadge();
-  const logUrl = logId ? getLogUrl(logId) : '';
 
   // Subscribe to live Firestore analytics counter
   useEffect(() => {
@@ -1040,83 +1042,111 @@ export default function App() {
             activeTab === 'editor' ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          {/* Preview Toolbar (Sauvegarder à gauche, Imprimer à droite) */}
-          <div className="w-full max-w-[148mm] flex flex-col gap-2 mb-2 px-1">
-            <div className="flex items-center justify-between gap-2">
-              {/* GAUCHE : Bouton Sauvegarder + Pastille et texte de statut */}
-              <div className="flex items-center gap-2 flex-wrap">
+          {/* Preview Toolbar (Bouton Sauvegarder ou Barre d'état + Lien à gauche, Imprimer à droite) */}
+          <div className="no-print w-full max-w-[148mm] flex items-center justify-between gap-2 mb-2 px-1">
+            {/* GAUCHE : Bouton "Sauvegarder" (avant 1ère sauvegarde) ou [ Barre d'état ] [ Lien + copier ] (après 1ère sauvegarde) */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap min-w-0">
+              {!logId ? (
                 <button
                   type="button"
                   id="save-flight-log-btn"
                   onClick={handleManualSave}
                   disabled={isSaving}
-                  className="px-3.5 py-1.5 sm:py-2 bg-sky-700 hover:bg-sky-800 disabled:opacity-60 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
-                  title="Enregistrer le plan de vol dans Firestore"
+                  className="h-10 px-3.5 py-2 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
+                  title="Sauvegarder le plan de vol"
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="w-4 h-4 shrink-0" />
                   <span>Sauvegarder</span>
                 </button>
-
-                {/* Pastille d'état (toujours accompagnée de son libellé texte) */}
-                <div
-                  id="log-save-status-badge"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 rounded-lg border border-slate-200"
-                >
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusBadge.dotClass}`} />
-                  <span className={`text-xs ${statusBadge.textClass}`}>{saveStatus.label}</span>
-                </div>
-              </div>
-
-              {/* DROITE : Bouton Imprimer */}
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  id="quick-print-preview-btn"
-                  onClick={() => handlePrint()}
-                  className="px-4 py-1.5 sm:py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Imprimer</span>
-                </button>
-              </div>
-            </div>
-
-            {/* URL complète affichée dès que le document est sauvegardé */}
-            {logId && (
-              <div
-                id="log-share-url-container"
-                className="w-full bg-slate-50 border border-slate-200/90 rounded-lg p-2.5 flex flex-col gap-1 text-xs shadow-2xs"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1 bg-white border border-slate-200 rounded px-2.5 py-1.5 text-slate-700 font-mono text-[11px] sm:text-xs select-all overflow-hidden text-ellipsis whitespace-nowrap">
-                    <Share2 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                    <span className="truncate">{logUrl}</span>
-                  </div>
+              ) : (
+                <>
+                  {/* BARRE D'ÉTAT (élément de gauche) : largeur fixe, 3 états */}
                   <button
                     type="button"
-                    id="copy-log-url-btn"
+                    id="log-status-bar"
+                    disabled={saveStatus.state !== 'error' || isSaving}
+                    onClick={saveStatus.state === 'error' ? handleManualSave : undefined}
+                    className={`min-w-[160px] sm:min-w-[168px] h-10 px-3 rounded-lg text-xs sm:text-sm font-medium flex items-center justify-center gap-2 border transition-all shrink-0 select-none ${
+                      saveStatus.state === 'error'
+                        ? 'bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border-rose-300 text-rose-700 font-semibold cursor-pointer shadow-2xs'
+                        : saveStatus.state === 'saving'
+                        ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-default'
+                        : 'bg-slate-100 border-slate-200 text-slate-700 cursor-default'
+                    }`}
+                    title={
+                      saveStatus.state === 'error'
+                        ? 'Une erreur est survenue. Cliquez pour relancer la sauvegarde.'
+                        : undefined
+                    }
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        saveStatus.state === 'error'
+                          ? 'bg-rose-500'
+                          : saveStatus.state === 'saving'
+                          ? 'bg-amber-500 animate-pulse'
+                          : 'bg-emerald-500'
+                      }`}
+                    />
+                    <span className="whitespace-nowrap">
+                      {saveStatus.state === 'error'
+                        ? 'Échec — Réessayer'
+                        : saveStatus.state === 'saving'
+                        ? 'Enregistrement...'
+                        : 'Enregistré'}
+                    </span>
+                  </button>
+
+                  {/* LIEN (élément de droite) : picto copier en premier, URL remontée tronquée avec '...', marge de droite, et texte 'Conservez ce lien pour ce log' */}
+                  <button
+                    type="button"
+                    id="log-share-link-btn"
                     onClick={handleCopyUrl}
-                    className="px-3 py-1.5 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 text-white rounded text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer shadow-2xs"
-                    title="Copier le lien complet"
+                    title="Conservez ce lien pour retrouver et modifier ce log"
+                    className="h-10 pl-2.5 pr-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-lg flex items-center gap-2 transition-colors cursor-pointer shadow-2xs min-w-0 max-w-[195px] sm:max-w-[235px] overflow-hidden"
                   >
                     {isCopied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Copié !</span>
-                      </>
+                      <div className="flex items-center gap-2 min-w-0 w-full">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div className="flex flex-col items-start justify-center text-left min-w-0 overflow-hidden w-full">
+                          <span className="font-semibold text-[11px] sm:text-xs text-emerald-700 leading-tight block truncate w-full">
+                            Copié !
+                          </span>
+                          <span className="text-[9.5px] text-slate-500 font-normal leading-tight mt-0.5 block truncate w-full">
+                            Conservez ce lien pour ce log
+                          </span>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copier</span>
-                      </>
+                      <div className="flex items-center gap-2 min-w-0 w-full">
+                        <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div className="flex flex-col items-start justify-center text-left min-w-0 overflow-hidden w-full">
+                          <span className="font-mono text-[11px] sm:text-xs text-sky-700 hover:underline underline-offset-2 font-semibold leading-tight block truncate w-full">
+                            {logUrls.displayUrl}
+                          </span>
+                          <span className="text-[9.5px] text-slate-500 font-normal leading-tight mt-0.5 block truncate w-full">
+                            Conservez ce lien pour ce log
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </button>
-                </div>
-                <span className="text-[11px] text-slate-500 italic pl-0.5">
-                  Conservez ce lien pour retrouver et modifier ce log.
-                </span>
-              </div>
-            )}
+                </>
+              )}
+            </div>
+
+            {/* DROITE : Bouton Imprimer */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                id="quick-print-preview-btn"
+                onClick={() => handlePrint()}
+                className="h-10 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Imprimer</span>
+              </button>
+            </div>
           </div>
 
           {/* Interactive A5 Sheet Preview */}
