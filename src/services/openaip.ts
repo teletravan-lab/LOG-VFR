@@ -16,31 +16,31 @@ export interface OpenAIPAirport {
 
 export const DEFAULT_OPENAIP_KEY = '62b567343cce3397cdb4ea8a530ae752';
 
-/**
- * Extrait un code OACI de la saisie, sans faux positifs.
- * Accepte "LFPX" ou "LFPX Chavenay". Refuse "PONT", "COTE", "GARE".
- */
-export function extractIcao(input: string): string | null {
-  const upper = (input || '').trim().toUpperCase();
-  if (/^[A-Z]{4}$/.test(upper)) return upper;
-  const m = upper.match(/\b(LF[A-Z]{2})\b/);
-  return m ? m[1] : null;
-}
-
 function mapFrequencies(list: any[]): AerodromeInfo['frequencies'] {
   const f: AerodromeInfo['frequencies'] = {};
   for (const item of list || []) {
     const val = item.value || '';
-    const n = (item.name || '').toUpperCase();
+    const text = `${item.name || ''} ${item.callsign || ''}`.toUpperCase();
     const t = item.type;
     if (!val) continue;
-    if (!f.atis && (n.includes('ATIS') || t === 15 || t === 1)) f.atis = val;
-    else if (!f.twr && (n.includes('TWR') || n.includes('TOUR') || n.includes('TOWER') || t === 2)) f.twr = val;
-    else if (!f.gnd && (n.includes('GND') || n.includes('SOL') || n.includes('GROUND') || t === 3)) f.gnd = val;
-    else if (!f.afis && (n.includes('AFIS') || t === 9)) f.afis = val;
-    else if (!f.aa && (n.includes('A/A') || n.includes('AUTO') || n.includes('UNICOM') || n.includes('INFO') || [10, 13, 14, 16].includes(t))) f.aa = val;
-    else if (!f.app && (n.includes('APP') || n.includes('APPROCHE') || t === 5)) f.app = val;
+    if (!f.atis && (text.includes('ATIS') || t === 15 || t === 1)) f.atis = val;
+    else if (!f.twr && (text.includes('TWR') || text.includes('TOUR') || text.includes('TOWER') || t === 2)) f.twr = val;
+    else if (!f.gnd && (text.includes('GND') || text.includes('SOL') || text.includes('GROUND') || t === 3)) f.gnd = val;
+    else if (!f.afis && (text.includes('AFIS') || t === 9)) f.afis = val;
+    else if (!f.aa && (text.includes('A/A') || text.includes('AUTO') || text.includes('UNICOM') || text.includes('INFO') || [10, 12, 13, 14, 16].includes(t))) f.aa = val;
+    else if (!f.app && (text.includes('APP') || text.includes('APPROCHE') || t === 5)) f.app = val;
   }
+
+  // Repli en fin de traitement : si aucune catégorie n'a été renseignée
+  // (ni atis, ni twr, ni gnd, ni afis, ni aa, ni app) alors que la liste contenait
+  // au moins une fréquence avec une valeur, place la première valeur non vide dans aa
+  if (!f.atis && !f.twr && !f.gnd && !f.afis && !f.aa && !f.app) {
+    const firstNonEmpty = (list || []).find((item) => (item?.value || '').trim())?.value?.trim();
+    if (firstNonEmpty) {
+      f.aa = firstNonEmpty;
+    }
+  }
+
   f.afis_aa = f.afis || f.aa || '';
   return f;
 }
@@ -73,20 +73,19 @@ function mapRunways(list: any[]): string {
 }
 
 /**
- * Récupère les données d'un terrain depuis OpenAIP, par code OACI exact.
- * Renvoie null si OpenAIP ne connaît pas ce code : on préfère des champs
- * vides à des valeurs approchantes sur une planchette de vol.
- * Le résultat est mis en cache dans localStorage.
+ * Récupère les données d'un terrain depuis OpenAIP par son identifiant unique.
+ * Renvoie null si la réponse n'est pas OK ou si l'objet est vide.
+ * Le résultat est mis en cache dans localStorage sous la clé 'oaip:id:<id>'.
  */
 export async function fetchAerodromeDetails(
-  oaci: string,
+  openAipId: string,
   apiKey: string = DEFAULT_OPENAIP_KEY
 ): Promise<AerodromeInfo | null> {
-  const code = (oaci || '').trim().toUpperCase();
-  if (!/^[A-Z]{4}$/.test(code)) return null;
-  
+  const id = (openAipId || '').trim();
+  if (!id) return null;
+
   try {
-    const cached = localStorage.getItem('AERO_CACHE_' + code);
+    const cached = localStorage.getItem('oaip:id:' + id);
     if (cached) return JSON.parse(cached) as AerodromeInfo;
   } catch {
     // localStorage indisponible : on interroge le réseau directement
@@ -94,22 +93,24 @@ export async function fetchAerodromeDetails(
 
   try {
     const res = await fetch(
-      `https://api.core.openaip.net/api/airports?search=${encodeURIComponent(code)}&page=1&limit=10`,
+      `https://api.core.openaip.net/api/airports/${encodeURIComponent(id)}`,
       { headers: { 'x-openaip-api-key': apiKey, Accept: 'application/json' } }
     );
     if (!res.ok) {
-      console.warn('OpenAIP HTTP', res.status, 'pour', code);
+      console.warn('OpenAIP HTTP', res.status, 'pour', id);
       return null;
     }
-    const data = await res.json();
-    const items: any[] = Array.isArray(data.items) ? data.items : [];
-    const item = items.find((i) => (i.icaoCode || '').toUpperCase() === code);
-    if (!item) return null;
-    
+    const item = await res.json();
+    if (!item || typeof item !== 'object' || Object.keys(item).length === 0) {
+      return null;
+    }
+
+    const code = ((item.icaoCode || item.altIdentifier || '') as string).trim().toUpperCase();
     const coords = item.geometry?.coordinates;
     const info: AerodromeInfo = {
       oaci: code,
       name: item.name || code,
+      openAipId: item._id || id,
       city: item.city || '',
       region: item.country || '',
       elevationFt:
@@ -124,16 +125,17 @@ export async function fetchAerodromeDetails(
       frequencies: mapFrequencies(item.frequencies),
       lat: Array.isArray(coords) ? coords[1] : undefined,
       lon: Array.isArray(coords) ? coords[0] : undefined,
+      isUlm: item.type === 6,
     };
-    
+
     try {
-      localStorage.setItem('AERO_CACHE_' + code, JSON.stringify(info));
+      localStorage.setItem('oaip:id:' + id, JSON.stringify(info));
     } catch {
       // quota plein : on continue sans cache
     }
     return info;
   } catch (err) {
-    console.warn('OpenAIP indisponible pour', code, err);
+    console.warn('OpenAIP indisponible pour', id, err);
     return null;
   }
 }// <-- Accolade manquante ajoutée ici
@@ -251,29 +253,28 @@ export async function fetchSunTimes(lat: number, lng: number, flightDate?: strin
 }
 
 /**
- * Données du terrain d'arrivée : OpenAIP uniquement, puis éphémérides.
+ * Données du terrain d'arrivée : OpenAIP par identifiant, puis éphémérides.
  * Si OpenAIP ne connaît pas le terrain, les champs restent vides et
  * les notes le disent explicitement.
  */
 export async function fetchArrivalAirportData(
-  oaciCode: string,
+  openAipId: string,
   flightDate?: string,
   customApiKey?: string
 ): Promise<ArrivalAirportResult | null> {
-  const cleanInput = (oaciCode || '').trim();
-  if (!cleanInput) return null;
+  const cleanId = (openAipId || '').trim();
+  if (!cleanId) return null;
 
-  const icao = extractIcao(cleanInput);
   const apiKey =
     customApiKey && customApiKey.trim().length > 5
       ? customApiKey.trim()
       : DEFAULT_OPENAIP_KEY;
 
-  const info = icao ? await fetchAerodromeDetails(icao, apiKey) : null;
+  const info = await fetchAerodromeDetails(cleanId, apiKey);
 
   const result: ArrivalAirportResult = {
-    oaci: info?.oaci || icao || cleanInput.toUpperCase(),
-    name: info?.name || cleanInput,
+    oaci: info?.oaci || cleanId.toUpperCase(),
+    name: info?.name || cleanId,
     lat: info?.lat,
     lng: info?.lon,
     elevationFt: info?.elevationFt,
@@ -284,7 +285,7 @@ export async function fetchArrivalAirportData(
         ? `${Math.round((info.elevationFt + 1000) / 100) * 100}`
         : '',
     integration: '',
-    rawNotes: formatAerodromeNotes(info, icao || cleanInput),
+    rawNotes: formatAerodromeNotes(info, info?.oaci || cleanId),
   };
 
   if (result.lat !== undefined && result.lng !== undefined) {

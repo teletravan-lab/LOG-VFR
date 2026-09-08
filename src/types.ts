@@ -14,6 +14,7 @@ export interface AerodromeFrequency {
 export interface AerodromeInfo {
   oaci: string;
   name: string;
+  openAipId?: string;
   city?: string;
   region?: string;
   elevationFt?: number;
@@ -30,6 +31,7 @@ export interface Waypoint {
   type: WaypointType;
   name: string;
   oaci?: string;
+  openAipId?: string;
   coordinates?: string;
   notes: string;
   tableNotes?: string;

@@ -19,6 +19,8 @@ import {
   Save,
   Copy,
   Check,
+  Loader2,
+  X,
 } from 'lucide-react';
 import { FlightPlan, NavLeg, Waypoint } from './types';
 import { A5KneeboardView } from './components/A5KneeboardView';
@@ -1060,23 +1062,25 @@ export default function App() {
                 </button>
               ) : (
                 <>
-                  {/* BARRE D'ÉTAT (élément de gauche) : largeur fixe, 3 états */}
+                  {/* BOÎTE STATUT D'ENREGISTREMENT : format quasi carré avec pastille et picto */}
                   <button
                     type="button"
                     id="log-status-bar"
                     disabled={saveStatus.state !== 'error' || isSaving}
                     onClick={saveStatus.state === 'error' ? handleManualSave : undefined}
-                    className={`min-w-[160px] sm:min-w-[168px] h-10 px-3 rounded-lg text-xs sm:text-sm font-medium flex items-center justify-center gap-2 border transition-all shrink-0 select-none ${
+                    className={`h-10 w-12 rounded-lg flex items-center justify-center gap-1.5 border transition-all shrink-0 select-none ${
                       saveStatus.state === 'error'
-                        ? 'bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border-rose-300 text-rose-700 font-semibold cursor-pointer shadow-2xs'
+                        ? 'bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border-rose-300 text-rose-700 cursor-pointer shadow-2xs'
                         : saveStatus.state === 'saving'
                         ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-default'
                         : 'bg-slate-100 border-slate-200 text-slate-700 cursor-default'
                     }`}
                     title={
                       saveStatus.state === 'error'
-                        ? 'Une erreur est survenue. Cliquez pour relancer la sauvegarde.'
-                        : undefined
+                        ? 'Erreur lors de l’enregistrement. Cliquez pour réessayer.'
+                        : saveStatus.state === 'saving'
+                        ? 'Enregistrement en cours...'
+                        : 'Enregistré'
                     }
                   >
                     <span
@@ -1088,13 +1092,13 @@ export default function App() {
                           : 'bg-emerald-500'
                       }`}
                     />
-                    <span className="whitespace-nowrap">
-                      {saveStatus.state === 'error'
-                        ? 'Échec — Réessayer'
-                        : saveStatus.state === 'saving'
-                        ? 'Enregistrement...'
-                        : 'Enregistré'}
-                    </span>
+                    {saveStatus.state === 'error' ? (
+                      <X className="w-4 h-4 text-rose-600 shrink-0" strokeWidth={2.5} />
+                    ) : saveStatus.state === 'saving' ? (
+                      <Loader2 className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
+                    ) : (
+                      <Save className="w-4 h-4 text-emerald-600 shrink-0" />
+                    )}
                   </button>
 
                   {/* LIEN (élément de droite) : picto copier en premier, URL remontée tronquée avec '...', marge de droite, et texte 'Conservez ce lien pour ce log' */}

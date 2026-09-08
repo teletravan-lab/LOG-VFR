@@ -59,10 +59,13 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
 
     if (field === 'flightDate' && value) {
       // Re-fetch sunrise & sunset when the flight date changes
+      const destOpenAipId = flightPlan.destination.openAipId;
       const destOaci = flightPlan.destination.oaci || '';
       const destName = flightPlan.destination.name || '';
-      if (destOaci || destName) {
-        const local = FRENCH_AERODROMES.find((a) => a.oaci.toUpperCase() === destOaci.toUpperCase());
+      if (destOpenAipId || destOaci || destName) {
+        const local = destOpenAipId
+          ? FRENCH_AERODROMES.find((a) => a.id === destOpenAipId)
+          : FRENCH_AERODROMES.find((a) => a.oaci.toUpperCase() === destOaci.toUpperCase());
         triggerFetchArrivalData(destOaci || destName, local, value);
       }
     }
@@ -76,6 +79,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
         ...flightPlan.departure,
         name: `${aero.oaci} ${aero.name}`,
         oaci: aero.oaci,
+        openAipId: aero.openAipId,
         coordinates: aero.elevationFt ? `Alt ${aero.elevationFt}ft` : '',
         notes: defaultNotes,
         frequencies: aero.frequencies,
@@ -89,12 +93,22 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
     baseAero?: AerodromeInfo | AerodromeIndexEntry,
     forcedDate?: string
   ) => {
-    if (!targetOaciOrName || !targetOaciOrName.trim()) return;
+    if (!targetOaciOrName && !baseAero) return;
     setIsLoadingArrivalData(true);
 
     const dateToUse = forcedDate || flightPlan.flightDate || new Date().toISOString().split('T')[0];
 
     try {
+      const openAipIdToUse =
+        (baseAero && 'openAipId' in baseAero ? baseAero.openAipId : undefined) ||
+        (baseAero && 'id' in baseAero ? baseAero.id : undefined) ||
+        flightPlan.destination.openAipId ||
+        FRENCH_AERODROMES.find(
+          (a) =>
+            a.oaci.toUpperCase() === (baseAero?.oaci || targetOaciOrName || '').trim().toUpperCase() ||
+            a.name.toUpperCase() === (targetOaciOrName || '').trim().toUpperCase()
+        )?.id;
+
       const baseLat = baseAero && 'lat' in baseAero ? baseAero.lat : undefined;
       const baseLng = baseAero && 'lon' in baseAero ? baseAero.lon : undefined;
       const baseElev = baseAero && 'elevationFt' in baseAero ? baseAero.elevationFt : undefined;
@@ -109,12 +123,10 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
         instantSunTimes = await fetchSunTimes(currentLat, currentLng, dateToUse);
       }
 
-      // 2. Query OpenAIP & ephemeris
-      const data = await fetchArrivalAirportData(
-        baseAero?.oaci || targetOaciOrName,
-        dateToUse,
-        openAipApiKey
-      );
+      // 2. Query OpenAIP by openAipId & ephemeris
+      const data = openAipIdToUse
+        ? await fetchArrivalAirportData(openAipIdToUse, dateToUse, openAipApiKey)
+        : null;
 
       if (data) {
         const oaciCode = baseAero?.oaci || data.oaci || '';
@@ -135,6 +147,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             ...flightPlan.destination,
             name: displayName,
             oaci: oaciCode,
+            openAipId: openAipIdToUse,
             coordinates: data.elevationFt
               ? `Alt ${data.elevationFt}ft`
               : baseElev
@@ -168,6 +181,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             ...flightPlan.destination,
             name: `${baseAero.oaci} ${baseAero.name}`,
             oaci: baseAero.oaci,
+            openAipId: openAipIdToUse,
             coordinates: baseElev ? `Alt ${baseElev}ft` : '',
             elevationFt: baseElev,
             runways: baseRunways || '',
@@ -198,10 +212,13 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
 
   // Synchronize ephemeris on mount or when flight date / destination is set without sunset
   useEffect(() => {
+    const destOpenAipId = flightPlan.destination.openAipId;
     const destOaci = flightPlan.destination.oaci || '';
     const destName = flightPlan.destination.name || '';
-    if ((destOaci || destName) && !flightPlan.destination.sunsetLocal) {
-      const local = FRENCH_AERODROMES.find((a) => a.oaci.toUpperCase() === destOaci.toUpperCase());
+    if ((destOpenAipId || destOaci || destName) && !flightPlan.destination.sunsetLocal) {
+      const local = destOpenAipId
+        ? FRENCH_AERODROMES.find((a) => a.id === destOpenAipId)
+        : FRENCH_AERODROMES.find((a) => a.oaci.toUpperCase() === destOaci.toUpperCase());
       triggerFetchArrivalData(destOaci || destName, local);
     }
   }, [flightPlan.flightDate]);
@@ -218,6 +235,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
         ...flightPlan.destination,
         name: initialName,
         oaci: oaciCode,
+        openAipId: aero.openAipId,
         coordinates: aero.elevationFt ? `Alt ${aero.elevationFt}ft` : '',
         elevationFt: aero.elevationFt,
         runways: aero.runways || '',
@@ -947,6 +965,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       onSelect={(aero, notes) => {
                         handleWaypointChange(wpIndex, 'name', `${aero.oaci} ${aero.name}`);
                         handleWaypointChange(wpIndex, 'oaci', aero.oaci);
+                        handleWaypointChange(wpIndex, 'openAipId', aero.openAipId);
                         handleWaypointChange(wpIndex, 'notes', notes);
                         handleWaypointChange(wpIndex, 'frequencies', aero.frequencies);
                       }}

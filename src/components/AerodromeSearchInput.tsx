@@ -95,13 +95,14 @@ export const AerodromeSearchInput: React.FC<AerodromeSearchInputProps> = ({
 
     try {
       const details = await fetchAerodromeDetails(
-        entry.oaci,
+        entry.id,
         openAipApiKey && openAipApiKey.trim().length > 5 ? openAipApiKey.trim() : undefined
       );
 
       const info: AerodromeInfo = details ?? {
         oaci: entry.oaci,
         name: entry.name,
+        openAipId: entry.id,
         frequencies: {},
       };
 
@@ -109,7 +110,7 @@ export const AerodromeSearchInput: React.FC<AerodromeSearchInputProps> = ({
     } catch (err) {
       console.warn('Sélection aérodrome : échec OpenAIP', err);
       onSelect(
-        { oaci: entry.oaci, name: entry.name, frequencies: {} },
+        { oaci: entry.oaci, name: entry.name, openAipId: entry.id, frequencies: {} },
         formatAerodromeNotes(null, entry.oaci)
       );
     } finally {
