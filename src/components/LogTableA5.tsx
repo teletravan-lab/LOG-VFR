@@ -2,7 +2,7 @@ import React from 'react';
 import { Sunset } from 'lucide-react';
 import { Waypoint, NavLeg } from '../types';
 import { FRENCH_AERODROMES } from '../data/aerodromes';
-import { truncateWpName, getBranchEndRadioNotes } from '../lib/formatters';
+import { truncateWpName, truncateDepartureName, getBranchEndRadioNotes } from '../lib/formatters';
 
 export interface LogTableSegment {
   point?: Waypoint;
@@ -27,6 +27,7 @@ interface LogTableA5Props {
   segments?: LogTableSegment[];
   showDestination?: boolean;
   reprisePointNotice?: string;
+  isBlankLog?: boolean;
 }
 
 export const LogTableA5: React.FC<LogTableA5Props> = ({
@@ -41,6 +42,7 @@ export const LogTableA5: React.FC<LogTableA5Props> = ({
   segments,
   showDestination = true,
   reprisePointNotice,
+  isBlankLog = false,
 }) => {
   // Resolve Destination VAC information
   const destAero = React.useMemo(() => {
@@ -144,12 +146,12 @@ const destFreqs = {
     if (segments) return segments;
 
     const list: LogTableSegment[] = [];
-    // 1. Departure row: DÉPART : [Departure] => PON (no altitude row)
+    // 1. Departure row: DÉPART : [Departure] => PON (no altitude row, 28 chars max)
     list.push({
       point: departure,
       isOriginDeparture: true,
       branchNumber: undefined,
-      fromName: departure.name || (isPrintMode ? '__________________________' : 'LFPX Chavenay'),
+      fromName: departure.name ? truncateDepartureName(departure.name, 28) : (isPrintMode ? '__________________________' : 'LFPX Chavenay'),
       toName: 'PON',
       leg: legs[0] || {
         id: 'leg-0',
@@ -175,7 +177,7 @@ const destFreqs = {
       const toName =
         k < waypoints.length
           ? truncateWpName(waypoints[k]?.name?.trim()) || `WP ${k + 1}`
-          : destination.name?.trim() || (isPrintMode ? '__________________________' : 'Arrivée');
+          : truncateWpName(destination.name?.trim(), 18) || (isPrintMode ? '__________________________' : 'Arrivée');
 
       const pt = k < waypoints.length ? waypoints[k] : destination;
 
@@ -215,11 +217,11 @@ const destFreqs = {
   };
 
   const numLegsOnPage = activeSegments.filter((s) => !s.isOriginDeparture).length;
-  // Hauteurs fixes, identiques quel que soit le nombre de tronçons.
-  // Valeurs reprises du log vierge (cas 4 tronçons ou plus).
-  const paramRowMinHeightClass = 'min-h-[31px]';
-  const notesCellMinHeightClass = 'min-h-[48px]';
-  const arrivalBlockMinHeightClass = 'min-h-[56px]';
+  const isCompactLayout = isBlankLog || activeSegments.length >= 6;
+  const paramRowMinHeightClass = isCompactLayout ? 'min-h-[25px]' : 'min-h-[31px]';
+  const notesCellMinHeightClass = isCompactLayout ? 'min-h-[38px]' : 'min-h-[48px]';
+  const arrivalBlockMinHeightClass = isCompactLayout ? 'min-h-[44px]' : 'min-h-[56px]';
+  const BLANK_LINE = '____________________';
 
   return (
     <div className="w-full border-2 border-black text-black bg-white select-text">
@@ -234,6 +236,8 @@ const destFreqs = {
       {activeSegments.map((seg) => {
         const { point, isOriginDeparture, branchNumber, fromName, toName, leg, legIndex } = seg;
         const radioSummary = point ? formatRadio(point.frequencies) : '';
+        const displayFromName = fromName === 'PON' ? 'PON' : truncateWpName(fromName, 18);
+        const displayToName = truncateWpName(toName, 18);
 
         if (isOriginDeparture) {
           return (
@@ -241,14 +245,14 @@ const destFreqs = {
               key={`seg-dep-${departure.id || departure.name}`}
               className="grid grid-cols-12 border-b-2 border-black"
             >
-              {/* Left 2/3 (8 cols): Info Départ => PON (sur une seule ligne compacte) */}
+              {/* Left 2/3 (8 cols): Info Départ => PON (sur une seule ligne compacte, 28 chars max) */}
               <div className="col-span-8 border-r-2 border-black px-1.5 py-1 flex items-center bg-slate-50/60 min-h-[26px]">
                 <div className="flex items-center gap-1.5 flex-wrap leading-tight">
                   <span className="font-extrabold text-[10.5px] uppercase tracking-tight text-black">
                     DÉPART :
                   </span>
                   <span className="font-bold text-[11px] uppercase text-slate-900">
-                    {departure.name || (isPrintMode ? '__________________________' : 'LFPX Chavenay')}
+                    {departure.name ? truncateDepartureName(departure.name, 28) : (isPrintMode ? '__________________________' : 'LFPX Chavenay')}
                   </span>
                   <span className="font-extrabold text-[11px] text-black uppercase">
                     =&gt; PON
@@ -256,53 +260,65 @@ const destFreqs = {
                 </div>
               </div>
 
-              {/* Right 1/3 (4 cols): Fréquences de Départ placées dans la colonne Notes */}
+              {/* Right 1/3 (4 cols): Fréquences de Départ placées dans la colonne Notes (laissées complètement vides en log vierge) */}
               <div className="col-span-4 px-1.5 py-1 flex flex-col justify-center bg-white min-h-[26px]">
-                <div className="font-mono text-[8px] sm:text-[8.5px] text-slate-900 flex flex-wrap gap-x-1.5 gap-y-0.5 items-center leading-tight">
-                  {depFreqs.atis ? (
-                    <span>
-                      <strong>ATIS:</strong> {depFreqs.atis}
-                    </span>
-                  ) : isPrintMode ? (
-                    <span>
-                      <strong>ATIS:</strong> ___
-                    </span>
-                  ) : null}
-                  {depFreqs.atis && (depFreqs.twr || depFreqs.afis_aa) ? (
-                    <span className="text-slate-400">|</span>
-                  ) : null}
-                  {depFreqs.twr ? (
-                    <span>
-                      <strong>TWR:</strong> {depFreqs.twr}
-                    </span>
-                  ) : isPrintMode ? (
-                    <span>
-                      <strong>TWR:</strong> ___
-                    </span>
-                  ) : null}
-                  {depFreqs.afis_aa ? (
-                    <>
-                      <span className="text-slate-400">|</span>
+                {!isBlankLog && (
+                  <div className="font-mono text-[8px] sm:text-[8.5px] text-slate-900 flex flex-wrap gap-x-1.5 gap-y-0.5 items-center leading-tight">
+                    {depFreqs.atis ? (
                       <span>
-                        <strong>A/A:</strong> {depFreqs.afis_aa}
+                        <strong>ATIS:</strong> {depFreqs.atis}
                       </span>
-                    </>
-                  ) : null}
-                  {depFreqs.siv ? (
-                    <>
-                      <span className="text-slate-400">|</span>
+                    ) : isPrintMode ? (
                       <span>
-                        <strong>SIV:</strong> {depFreqs.siv}
+                        <strong>ATIS:</strong> ___
                       </span>
-                    </>
-                  ) : null}
-                  {!depFreqs.atis && !depFreqs.twr && !depFreqs.afis_aa && !depFreqs.siv && !isPrintMode && (
-                    <span className="text-slate-400 italic text-[7.5px]">Fréquences non définies</span>
-                  )}
-                </div>
+                    ) : null}
+                    {depFreqs.atis && (depFreqs.twr || depFreqs.afis_aa) ? (
+                      <span className="text-slate-400">|</span>
+                    ) : null}
+                    {depFreqs.twr ? (
+                      <span>
+                        <strong>TWR:</strong> {depFreqs.twr}
+                      </span>
+                    ) : isPrintMode ? (
+                      <span>
+                        <strong>TWR:</strong> ___
+                      </span>
+                    ) : null}
+                    {depFreqs.afis_aa ? (
+                      <>
+                        <span className="text-slate-400">|</span>
+                        <span>
+                          <strong>A/A:</strong> {depFreqs.afis_aa}
+                        </span>
+                      </>
+                    ) : null}
+                    {depFreqs.siv ? (
+                      <>
+                        <span className="text-slate-400">|</span>
+                        <span>
+                          <strong>SIV:</strong> {depFreqs.siv}
+                        </span>
+                      </>
+                    ) : null}
+                    {!depFreqs.atis && !depFreqs.twr && !depFreqs.afis_aa && !depFreqs.siv && !isPrintMode && (
+                      <span className="text-slate-400 italic text-[7.5px]">Fréquences non définies</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
+        }
+
+        // Branche en route : pour le log vierge, afficher 1: PON => ______ et 2+: ______ => ______ avec lignes de taille identique
+        let routeTitle = `${displayFromName} => ${displayToName || (isPrintMode ? '__________________________' : 'Waypoint suivant')}`;
+        if (isBlankLog) {
+          if (branchNumber === 1) {
+            routeTitle = `PON => ${BLANK_LINE}`;
+          } else {
+            routeTitle = `${BLANK_LINE} => ${BLANK_LINE}`;
+          }
         }
 
         return (
@@ -312,16 +328,14 @@ const destFreqs = {
           >
             {/* Left 2/3 (8 columns): Sub-row 1 (Numéro de branche : Départ => Arrivée) + Sub-row 2 (Paramètres de vol) */}
             <div className="col-span-8 border-r-2 border-black flex flex-col">
-              {/* SUB-ROW 1: LIEU & BRANCHE (ex: 1 : PON => Waypoint suivant) - Espace vertical réduit significativement */}
-              <div className="px-1.5 py-0.5 border-b border-black flex flex-col justify-center bg-slate-50/40 min-h-[22px]">
-                <div className="flex items-center gap-1.5 flex-wrap leading-tight">
-                  <span className="font-extrabold text-[10.5px] uppercase tracking-tight text-black">
-                    {branchNumber} :
-                  </span>
-                  <span className="font-bold text-[11px] uppercase text-slate-900">
-                    {fromName} =&gt; {toName || (isPrintMode ? '__________________________' : 'Waypoint suivant')}
-                  </span>
-                </div>
+              {/* SUB-ROW 1: LIEU & BRANCHE (ex: 1 : PON => Waypoint suivant) - Espace vertical réduit */}
+              <div className="px-1.5 py-0.5 border-b border-black flex items-center bg-slate-50/40 min-h-[22px] leading-tight overflow-hidden">
+                <span className="font-extrabold text-[10.5px] uppercase tracking-tight text-black shrink-0 mr-1.5">
+                  {branchNumber} :
+                </span>
+                <span className="font-bold text-[10.5px] sm:text-[11px] uppercase text-slate-900 whitespace-nowrap truncate font-mono">
+                  {routeTitle}
+                </span>
               </div>
 
               {/* SUB-ROW 2: PARAMETRES DE VOL (6 colonnes : RM | DIST | ALTITUDE | T SANS / AC VW | ETA | ATA) */}
@@ -532,22 +546,20 @@ const destFreqs = {
         <div className={`grid grid-cols-12 ${arrivalBlockMinHeightClass} bg-slate-50/50`}>
           {/* Left side (2/3 = 8 cols): Données aérodrome d'arrivée */}
           <div className="col-span-8 p-1.5 border-r-2 border-black flex flex-col justify-between text-left">
-            {/* Header row: Arrivée (sans badge RÉSUMÉ VAC) */}
-            <div className="flex items-center justify-between gap-1 flex-wrap border-b border-black/20 pb-0.5 mb-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-extrabold text-[11px] uppercase tracking-tight text-black">
-                  Arrivée :
-                </span>
-                <span className="font-bold text-[11.5px] uppercase text-slate-900">
-                  {destination.name || (isPrintMode ? (
-                    '__________________________'
-                  ) : (
-                    <span className="text-slate-400 italic font-normal">
-                      (Point d'arrivée laissé libre)
-                    </span>
-                  ))}
-                </span>
-              </div>
+            {/* Header row: Arrivée - Pas de limite, écrit à partir de la même ligne que "Arrivée :" */}
+            <div className="border-b border-black/20 pb-0.5 mb-1 leading-tight text-left">
+              <span className="font-extrabold text-[11px] uppercase tracking-tight text-black mr-1.5">
+                Arrivée :
+              </span>
+              <span className="font-bold text-[11px] uppercase text-slate-900">
+                {destination.name || (isPrintMode ? (
+                  '__________________________'
+                ) : (
+                  <span className="text-slate-400 italic font-normal text-[10px]">
+                    (Point d'arrivée laissé libre)
+                  </span>
+                ))}
+              </span>
             </div>
 
             {/* VAC Data lines (3 formatted rows) */}

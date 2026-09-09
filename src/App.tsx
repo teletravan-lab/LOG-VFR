@@ -27,7 +27,14 @@ import { A5KneeboardView } from './components/A5KneeboardView';
 import { FlightPlanEditor } from './components/FlightPlanEditor';
 import { FRENCH_AERODROMES } from './data/aerodromes';
 import { DEFAULT_OPENAIP_KEY } from './services/openaip';
-import { subscribeToAnalytics, incrementPrintCount } from './services/firebase';
+import {
+  subscribeToAnalytics,
+  incrementPrintCount,
+  getParisDateStrings,
+  recordVisit,
+  subscribeToVisitorCount,
+  fetchYesterdayVisitorCount,
+} from './services/firebase';
 import { WindCalculator } from './components/WindCalculator';
 import {
   generateLogId,
@@ -67,82 +74,80 @@ const BLANK_FLIGHT_PLAN: FlightPlan = {
     { id: 'wp-blank-1', type: 'vide', name: '', notes: '' },
     { id: 'wp-blank-2', type: 'vide', name: '', notes: '' },
     { id: 'wp-blank-3', type: 'vide', name: '', notes: '' },
+    { id: 'wp-blank-4', type: 'vide', name: '', notes: '' },
+    { id: 'wp-blank-5', type: 'vide', name: '', notes: '' },
   ],
   legs: [
     { id: 'leg-blank-0', alt: '', rm: '', dist: '', ete: '', eta: '', consoTotale: '', notes: '' },
     { id: 'leg-blank-1', alt: '', rm: '', dist: '', ete: '', eta: '', consoTotale: '', notes: '' },
     { id: 'leg-blank-2', alt: '', rm: '', dist: '', ete: '', eta: '', consoTotale: '', notes: '' },
     { id: 'leg-blank-3', alt: '', rm: '', dist: '', ete: '', eta: '', consoTotale: '', notes: '' },
+    { id: 'leg-blank-4', alt: '', rm: '', dist: '', ete: '', eta: '', consoTotale: '', notes: '' },
+    { id: 'leg-blank-5', alt: '', rm: '', dist: '', ete: '', eta: '', consoTotale: '', notes: '' },
   ],
   generalNotes: '',
 };
 
 export default function App() {
-  // Flight plan state with strict defaults as requested by user
+  // Flight plan state: default state on site load is empty aircraft parameters (as right after clicking reset)
   const [flightPlan, setFlightPlan] = useState<FlightPlan>(() => {
     const today = new Date().toISOString().split('T')[0];
     return {
-      aircraftModel: 'P200',
-      aircraftReg: 'F-HXYZ',
-      fuelPerHour: 17,
-      cruiseSpeedKt: 90,
-      fuelOnBoard: 45,
-      taxiFuel: 3,
-      reserveMin: 30, // Réserve réglementaire VFR jour
+      aircraftModel: '',
+      aircraftReg: '',
+      fuelPerHour: 0,
+      cruiseSpeedKt: 0,
+      fuelOnBoard: 0,
+      taxiFuel: 0,
+      reserveMin: 0,
       flightDate: today,
-      altimeterQnh: '1013',
+      altimeterQnh: '',
       windInfo: '',
-      squawk: '7000',
+      squawk: '',
       departure: {
-        id: 'dep-lfpx',
-        type: 'aerodrome',
-        name: 'LFPX Chavenay - Villepreux',
-        oaci: 'LFPX',
-        coordinates: 'Alt 426 ft',
-        notes:
-          'ATIS: 129.405 | TWR: 120.300 | SIV Paris: 126.100\nAlt: 426 ft | Pistes: 05/23 (850m/915m)\nTdP 05/23 à 1400 ft QNH. Sortie Sud Mantes.',
-        frequencies: {
-          atis: '129.405',
-          twr: '120.300',
-          siv: 'Paris Info 126.100',
-        },
-        tableNotes: '',
-      },
-      destination: {
-        // Point d'arrivée est laissé vide par défaut
-        id: 'dest-empty',
+        id: 'dep-default',
         type: 'aerodrome',
         name: '',
+        oaci: '',
+        coordinates: '',
+        notes: '',
+        tableNotes: '',
+        frequencies: {
+          atis: '',
+          twr: '',
+          siv: '',
+        },
+      },
+      destination: {
+        id: 'dest-default',
+        type: 'aerodrome',
+        name: '',
+        oaci: '',
+        coordinates: '',
         notes: '',
         tableNotes: '',
       },
-            waypoints: [],
+      waypoints: [],
       legs: [
         {
           id: 'leg-0',
           alt: '',
           rm: '',
           dist: '',
+          tSansVw: '',
+          tAvecVw: '',
           ete: '',
           temps: '',
           eta: '',
-          consoTotale: '',
-          notes: '',
-        },
-        {
-          id: 'leg-1',
-          alt: '',
-          rm: '',
-          dist: '',
-          ete: '',
-          temps: '',
-          eta: '',
+          ata: '',
           consoTotale: '',
           notes: '',
         },
       ],
-      departureTime: '10:00',
+      departureTime: '',
       generalNotes: '',
+      destinationSunriseLocal: '',
+      destinationSunsetLocal: '',
     };
   });
 
@@ -152,6 +157,9 @@ export default function App() {
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showWindCalc, setShowWindCalc] = useState<boolean>(false);
   const [logsCreatedCount, setLogsCreatedCount] = useState<number | null>(null);
+  const [totalVisitors, setTotalVisitors] = useState<number | null>(null);
+  const [yesterdayVisitors, setYesterdayVisitors] = useState<number | null>(null);
+  const visitRecordedRef = useRef<boolean>(false);
 
   // --- Gestion de la persistance Firestore des logs de vol ---
   const [logId, setLogId] = useState<string | null>(() => {
@@ -170,6 +178,7 @@ export default function App() {
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [isLogLoading, setIsLogLoading] = useState<boolean>(false);
 
   const createdAtRef = useRef<string | undefined>(undefined);
   const lastSavedHashRef = useRef<string>('');
@@ -211,22 +220,38 @@ export default function App() {
         .catch(() => {
           setSaveStatus({ state: 'error', label: 'Échec' });
         });
-    } else {
-      // Aucun paramètre d'URL : vérifie si un brouillon intermédiaire existe en local
-      try {
-        const savedDraft = localStorage.getItem('skylog_intermediate_plan');
-        if (savedDraft) {
-          const parsed = JSON.parse(savedDraft);
-          if (parsed && typeof parsed === 'object' && parsed.aircraftModel) {
-            setFlightPlan(parsed);
-            flightPlanRef.current = parsed;
-          }
-        }
-      } catch (e) {
-        console.warn('Erreur lecture brouillon local:', e);
-      }
     }
   }, []);
+
+  // Easter egg : au clic sur l'icône à gauche de Paramétrage :
+  // Avion P200, Immat F-JUJN, Conso 17L, Vitesse 90 kts, départ LFPX Chavenay
+  const handleEasterEggDefaultFlight = () => {
+    setFlightPlan((prev) => ({
+      ...prev,
+      aircraftModel: 'P200',
+      aircraftReg: 'F-JUJN',
+      fuelPerHour: 17,
+      cruiseSpeedKt: 90,
+      fuelOnBoard: 45,
+      taxiFuel: 3,
+      reserveMin: 30,
+      departure: {
+        id: 'dep-lfpx',
+        type: 'aerodrome',
+        name: 'LFPX Chavenay - Villepreux',
+        oaci: 'LFPX',
+        coordinates: 'Alt 426 ft',
+        notes:
+          'ATIS: 129.405 | TWR: 120.300 | SIV Paris: 126.100\nAlt: 426 ft | Pistes: 05/23 (850m/915m)\nTdP 05/23 à 1400 ft QNH. Sortie Sud Mantes.',
+        frequencies: {
+          atis: '129.405',
+          twr: '120.300',
+          siv: 'Paris Info 126.100',
+        },
+        tableNotes: '',
+      },
+    }));
+  };
 
   // Fonction centrale d'exécution d'une sauvegarde Firestore
   const executeSave = async (targetLogId: string, currentPlan: FlightPlan) => {
@@ -376,6 +401,30 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = subscribeToAnalytics((count) => {
       setLogsCreatedCount(count);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Enregistrement unique de la visite au chargement + lecture de la veille
+  useEffect(() => {
+    if (visitRecordedRef.current) return;
+    visitRecordedRef.current = true;
+
+    const { today, yesterday } = getParisDateStrings();
+
+    // Enregistrement atomique sans bloquer
+    recordVisit(today);
+
+    // Lecture de la veille
+    fetchYesterdayVisitorCount(yesterday).then((count) => {
+      setYesterdayVisitors(count);
+    });
+  }, []);
+
+  // Écoute temps réel (LECTURE SEULE) du total cumulé de visiteurs
+  useEffect(() => {
+    const unsubscribe = subscribeToVisitorCount((count) => {
+      setTotalVisitors(count);
     });
     return () => unsubscribe();
   }, []);
@@ -949,7 +998,7 @@ export default function App() {
 
                 {/* NOTAM Info */}
                 <a
-                  href="https://notaminfo.com/"
+                  href="https://notaminfo.com/francemap"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3.5 py-2 flex items-center justify-between hover:bg-sky-50 text-slate-900 hover:text-sky-900 font-semibold transition-colors group"
@@ -1156,7 +1205,7 @@ export default function App() {
 
                 {/* NOTAM Info */}
                 <a
-                  href="https://notaminfo.com/"
+                  href="https://notaminfo.com/francemap"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2 flex items-center justify-between hover:bg-sky-50 text-slate-900 hover:text-sky-900 font-semibold transition-colors group"
@@ -1222,7 +1271,15 @@ export default function App() {
         >
           <div className="flex items-center justify-between gap-2 min-w-0">
             <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-              <FileText className="w-4 h-4 text-sky-600 shrink-0" />
+              <button
+                type="button"
+                id="easter-egg-default-flight-btn"
+                onClick={handleEasterEggDefaultFlight}
+                className="hover:scale-110 active:scale-95 transition-transform p-0.5 rounded cursor-pointer group focus:outline-none"
+                title="Easter egg : paramétrer mon vol par défaut (P200, F-JUJN, 17L/h, 90kt, LFPX Chavenay)"
+              >
+                <FileText className="w-4 h-4 text-sky-600 group-hover:text-sky-800 transition-colors shrink-0" />
+              </button>
               <span>Paramétrage</span>
             </h2>
 
@@ -1325,6 +1382,8 @@ export default function App() {
             onChange={setFlightPlan}
             openAipApiKey={openAipApiKey}
             onOpenAipApiKeyChange={setOpenAipApiKey}
+            onLoadingChange={setIsLogLoading}
+            onEasterEgg={handleEasterEggDefaultFlight}
           />
         </div>
 
@@ -1457,8 +1516,8 @@ export default function App() {
           </div>
 
           {/* Interactive A5 Sheet Preview */}
-          <div className="overflow-x-auto w-full flex justify-center py-2 bg-slate-200/60 rounded-xl border border-slate-300 shadow-inner">
-            <div>
+          <div className="overflow-x-auto w-full flex justify-center py-2 bg-slate-200/60 rounded-xl border border-slate-300 shadow-inner relative min-h-[400px]">
+            <div className={`transition-opacity duration-200 ${isLogLoading ? 'opacity-30 pointer-events-none select-none' : ''}`}>
               <A5KneeboardView
                 flightPlan={flightPlan}
                 onUpdateDepartureNotes={handleUpdateDepartureNotes}
@@ -1472,9 +1531,32 @@ export default function App() {
                 onUpdateWaypointTableNotes={handleUpdateWaypointTableNotes}
               />
             </div>
+            {isLogLoading && (
+              <div className="absolute inset-0 bg-slate-900/15 backdrop-blur-[1.5px] rounded-xl flex flex-col items-center justify-center gap-3 z-30 pointer-events-none">
+                <div className="bg-white/95 px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 flex items-center gap-2.5">
+                  <Loader2 className="w-5 h-5 text-sky-600 animate-spin" />
+                  <span className="text-xs font-bold text-slate-800">
+                    Chargement des données du log...
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
+
+      {/* FOOTER : Compteurs de visites */}
+      <footer className="no-print mt-auto py-3 px-4 border-t border-slate-800 bg-slate-900 text-center text-xs select-none">
+        <div className="max-w-7xl mx-auto flex items-center justify-center flex-wrap gap-x-2 gap-y-1">
+          <span className="font-medium text-white">
+            Pilotes visiteurs : <span className="font-bold text-white">{totalVisitors !== null ? totalVisitors : '—'}</span>
+          </span>
+          <span className="text-slate-600 font-light select-none">·</span>
+          <span className="text-slate-400 font-normal">
+            Visiteurs hier : <span className="text-slate-300 font-normal">{yesterdayVisitors !== null ? yesterdayVisitors : '—'}</span>
+          </span>
+        </div>
+      </footer>
 
       {/* 3. DEDICATED PRINT CONTAINER (Active ONLY during browser print @media print) */}
       <div className="print-only hidden">
@@ -1482,7 +1564,8 @@ export default function App() {
           <A5KneeboardView
             flightPlan={isPrintingBlank ? BLANK_FLIGHT_PLAN : flightPlan}
             isPrintMode={true}
-                        duplicateIfSinglePage={isPrintingBlank}
+            duplicateIfSinglePage={isPrintingBlank}
+            isBlankLog={isPrintingBlank}
           />
         </div>
       </div>

@@ -22,7 +22,7 @@ import { FlightPlan, Waypoint, NavLeg, WaypointType, AerodromeInfo } from '../ty
 import { AerodromeSearchInput } from './AerodromeSearchInput';
 import { fetchArrivalAirportData, fetchSunTimes } from '../services/openaip';
 import { AerodromeIndexEntry, FRENCH_AERODROMES } from '../data/aerodromes';
-import { truncateWpName } from '../lib/formatters';
+import { truncateWpName, truncateDepartureName } from '../lib/formatters';
 
 interface FlightPlanEditorProps {
   flightPlan: FlightPlan;
@@ -30,6 +30,7 @@ interface FlightPlanEditorProps {
   openAipApiKey?: string;
   onOpenAipApiKeyChange?: (key: string) => void;
   onLoadingChange?: (loading: boolean) => void;
+  onEasterEgg?: () => void;
 }
 
 export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
@@ -38,6 +39,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
   openAipApiKey,
   onOpenAipApiKeyChange,
   onLoadingChange,
+  onEasterEgg,
 }) => {
   const [showAircraftSettings, setShowAircraftSettings] = useState(false);
   const [isLoadingArrivalData, setIsLoadingArrivalData] = useState(false);
@@ -514,32 +516,10 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
         notes: '',
         tableNotes: '',
       },
-      waypoints: [
-        {
-          id: `wp-1-${Date.now()}`,
-          type: 'custom',
-          name: '',
-          notes: '',
-          tableNotes: '',
-        },
-      ],
+      waypoints: [],
       legs: [
         {
           id: 'leg-0',
-          alt: '',
-          rm: '',
-          dist: '',
-          tSansVw: '',
-          tAvecVw: '',
-          ete: '',
-          temps: '',
-          eta: '',
-          ata: '',
-          consoTotale: '',
-          notes: '',
-        },
-        {
-          id: 'leg-1',
           alt: '',
           rm: '',
           dist: '',
@@ -589,7 +569,15 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             {/* 1. Avion : Modèle | Immatriculation */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-300 rounded-lg text-xs shadow-2xs transition-all shrink-0">
-              <Plane className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <button
+                type="button"
+                id="easter-egg-plane-btn"
+                onClick={onEasterEgg}
+                className="hover:scale-110 active:scale-95 transition-transform p-0 rounded cursor-pointer focus:outline-none"
+                title="Paramétrer mon vol par défaut (P200, F-JUJN, 17L/h, 90kt, LFPX Chavenay)"
+              >
+                <Plane className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              </button>
               <input
                 type="text"
                 value={flightPlan.aircraftModel || ''}
@@ -744,11 +732,11 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             type="button"
             id="reset-flight-plan-btn"
             onClick={handleReset}
-            className="ml-2 text-[11px] text-slate-400 hover:text-slate-700 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-slate-100 cursor-pointer"
+            className="ml-2 text-xs font-semibold text-black hover:text-slate-800 flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded hover:bg-slate-100 cursor-pointer"
             title="Reset : vider toutes les informations (avion, tronçons, notes) et afficher la date du jour"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset</span>
+            <RotateCcw className="w-3.5 h-3.5 text-black shrink-0" />
+            <span className="text-black font-semibold text-xs">Reset</span>
           </button>
         </div>
       </div>
@@ -875,7 +863,9 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                   <MapPin className="w-3.5 h-3.5 text-white fill-white" />
                 </div>
                 <span className="text-xs font-bold uppercase tracking-wider text-sky-950 flex items-center gap-1.5 font-mono">
-                  <span className="text-slate-700">Départ</span>
+                  <span className="text-slate-700">
+                    {flightPlan.departure.name ? truncateDepartureName(flightPlan.departure.name, 28) : 'Départ'}
+                  </span>
                   <span className="text-slate-400 font-sans">=&gt;</span>
                   <span className="text-sky-950 font-extrabold">PON</span>
                 </span>
@@ -1181,8 +1171,8 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             flightPlan.waypoints.length > 0
               ? flightPlan.waypoints[flightPlan.waypoints.length - 1]?.name?.trim() || `WP ${flightPlan.waypoints.length}`
               : 'PON';
-          const prevPointName = flightPlan.waypoints.length > 0 ? truncateWpName(prevRaw) : 'PON';
-          const currentPointName = flightPlan.destination.name?.trim() || 'Arrivée';
+          const prevPointName = flightPlan.waypoints.length > 0 ? truncateWpName(prevRaw, 18) : 'PON';
+          const currentPointName = flightPlan.destination.name?.trim() ? truncateWpName(flightPlan.destination.name.trim(), 18) : 'Arrivée';
           const destLegIndex = flightPlan.waypoints.length;
           const destLeg = getLeg(destLegIndex);
 

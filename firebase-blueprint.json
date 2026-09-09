@@ -9,12 +9,36 @@
           "type": "number",
           "description": "Total logs count printed or created"
         },
+        "visitCount": {
+          "type": "number",
+          "description": "Total visits count"
+        },
         "updatedAt": {
           "type": "string",
           "description": "ISO timestamp of last update"
         }
       },
       "required": ["printCount"]
+    },
+    "dailyVisits": {
+      "title": "dailyVisits",
+      "description": "Daily visits counter in analytics collection",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "number",
+          "description": "Visits on this day"
+        },
+        "day": {
+          "type": "string",
+          "description": "Date AAAA-MM-JJ in Europe/Paris timezone"
+        },
+        "expiresAt": {
+          "type": "object",
+          "description": "Firestore Timestamp expiring in 90 days"
+        }
+      },
+      "required": ["count", "day"]
     },
     "flightLog": {
       "title": "flightLog",

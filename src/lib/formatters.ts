@@ -1,12 +1,21 @@
 import { Waypoint } from '../types';
-import { FRENCH_AERODROMES } from '../data/aerodromes';
 
 /**
- * Tronque le nom d'un point en route s'il dépasse maxLen caractères (15 par défaut),
- * pour éviter qu'il ne s'affiche sur deux lignes.
- * Les points de départ et d'arrivée ne doivent pas être tronqués.
+ * Tronque le nom d'un point de départ s'il dépasse 28 caractères.
  */
-export const truncateWpName = (name?: string, maxLen = 15): string => {
+export const truncateDepartureName = (name?: string, maxLen = 28): string => {
+  if (!name) return '';
+  const trimmed = name.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return trimmed.slice(0, maxLen);
+};
+
+/**
+ * Tronque le nom d'un point en route s'il dépasse maxLen caractères (18 par défaut),
+ * pour les deux points (from et to) d'une branche en route.
+ * L'arrivée finale n'a pas de limite.
+ */
+export const truncateWpName = (name?: string, maxLen = 18): string => {
   if (!name) return '';
   const trimmed = name.trim();
   if (trimmed.length <= maxLen) return trimmed;
@@ -28,13 +37,7 @@ export const getBranchEndRadioNotes = (point?: Waypoint): string => {
 
   if (!isAero && !oaci) return '';
 
-  let freqs = point.frequencies;
-  if ((!freqs || !Object.values(freqs).some(Boolean)) && oaci) {
-    const matched = FRENCH_AERODROMES.find((a) => a.oaci.toUpperCase() === oaci);
-    if (matched?.frequencies) {
-      freqs = matched.frequencies;
-    }
-  }
+  const freqs = point.frequencies;
 
   const parts: string[] = [];
   if (freqs?.atis) parts.push(`ATIS: ${freqs.atis}`);

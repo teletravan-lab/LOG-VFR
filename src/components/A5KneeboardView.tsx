@@ -1,7 +1,7 @@
 import React from 'react';
 import { FlightPlan, NavLeg } from '../types';
 import { LogTableA5, LogTableSegment } from './LogTableA5';
-import { truncateWpName } from '../lib/formatters';
+import { truncateWpName, truncateDepartureName } from '../lib/formatters';
 
 interface A5KneeboardViewProps {
   flightPlan: FlightPlan;
@@ -17,6 +17,7 @@ interface A5KneeboardViewProps {
   onUpdateDepartureTableNotes?: (notes: string) => void;
   onUpdateDestinationTableNotes?: (notes: string) => void;
   onUpdateWaypointTableNotes?: (id: string, notes: string) => void;
+  isBlankLog?: boolean;
 }
 
 interface PageData {
@@ -37,7 +38,17 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
   onUpdateGeneralNotes,
   onUpdateAircraftField,
   onUpdateDestinationTableNotes,
+  isBlankLog,
 }) => {
+  // Check if flight is blank
+  const isBlankFlight =
+    isBlankLog ??
+    (flightPlan.departure.id === 'dep-blank' ||
+      (!flightPlan.departure.name &&
+        !flightPlan.departure.oaci &&
+        !flightPlan.aircraftModel &&
+        !flightPlan.flightDate));
+
   // Calculations
   const parseNum = (val?: string) => {
     if (!val) return 0;
@@ -77,13 +88,14 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
       ? `${totalConsoLiters}`
       : '';
 
-  // Format OACI codes for Header (e.g. LFPX => LFOO)
+  // Format OACI codes for Header (support up to 6 characters, e.g. LF7821, LF2752, LFPX => LFOO)
   const getOaciCode = (name: string, oaci?: string) => {
-    if (oaci && oaci.trim().length === 4) return oaci.trim().toUpperCase();
+    if (oaci && oaci.trim().length >= 3 && oaci.trim().length <= 6) return oaci.trim().toUpperCase();
+    if (oaci && oaci.trim().length > 6) return oaci.trim().slice(0, 6).toUpperCase();
     const trimmed = (name || '').trim();
-    const match = trimmed.match(/^[A-Za-z]{4}\b/);
-    if (match) return match[0].toUpperCase();
-    return trimmed.slice(0, 4).toUpperCase() || '____';
+    const match = trimmed.match(/^([A-Za-z0-9]{3,6})\b/);
+    if (match) return match[1].toUpperCase();
+    return trimmed.slice(0, 6).toUpperCase() || '____';
   };
 
   const depOaci = getOaciCode(flightPlan.departure.name, flightPlan.departure.oaci);
@@ -118,7 +130,7 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
       point: flightPlan.departure,
       isOriginDeparture: true,
       branchNumber: undefined,
-      fromName: flightPlan.departure.name || (isPrintMode ? '__________________________' : 'LFPX Chavenay'),
+      fromName: flightPlan.departure.name ? truncateDepartureName(flightPlan.departure.name, 28) : (isPrintMode ? '__________________________' : 'LFPX Chavenay'),
       toName: 'PON',
       leg: {
         ...(flightPlan.legs[0] || {
@@ -147,7 +159,7 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
       const toName =
         k < flightPlan.waypoints.length
           ? truncateWpName(flightPlan.waypoints[k]?.name?.trim()) || `WP ${k + 1}`
-          : flightPlan.destination.name?.trim() || (isPrintMode ? '__________________________' : 'Arrivée');
+          : truncateWpName(flightPlan.destination.name?.trim(), 18) || (isPrintMode ? '__________________________' : 'Arrivée');
 
       const pt = k < flightPlan.waypoints.length ? flightPlan.waypoints[k] : flightPlan.destination;
 
@@ -177,7 +189,9 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
     }
 
     // Single page case: up to 5 rows (Departure + up to 4 branches) fit comfortably on a single A5 sheet
-    if (allSegments.length <= 5) {
+    // For a blank flight log, fits up to 7 rows (Departure + 6 branches) on a single A5 sheet
+    const maxSinglePageRows = isBlankFlight ? 7 : 5;
+    if (allSegments.length <= maxSinglePageRows) {
       return [
         {
           pageIndex: 1,
@@ -409,6 +423,7 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
               segments={page.segments}
               showDestination={page.showDestination}
               reprisePointNotice={page.reprisePointNotice}
+              isBlankLog={isBlankFlight}
             />
           </div>
         </div>
