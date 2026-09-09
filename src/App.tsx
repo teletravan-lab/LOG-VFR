@@ -1073,9 +1073,9 @@ export default function App() {
         </div>
 
         {/* Mobile Big Buttons (Calculette puis liens Météo) */}
-        <div className="lg:hidden px-4 pt-1 pb-3 flex flex-col gap-2.5">
+        <div className="lg:hidden px-4 pt-1 pb-3 flex flex-col gap-2.5 items-center">
           {/* Gros bouton 1 : Calculette Vent ETE */}
-          <div className="relative w-full">
+          <div className="relative w-[74%] max-w-[280px]">
             <button
               type="button"
               id="mobile-calculette-btn"
@@ -1083,12 +1083,12 @@ export default function App() {
                 setShowWindCalc((prev) => !prev);
                 setIsWeatherMenuOpen(false);
               }}
-              className="w-full h-11 px-4 bg-slate-100 hover:bg-white active:bg-slate-200 text-slate-900 font-bold rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center gap-2.5 transition-colors text-sm sm:text-base cursor-pointer"
+              className="w-full h-[50px] px-3 bg-slate-100 hover:bg-white active:bg-slate-200 text-slate-900 font-bold rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center gap-2 transition-colors text-xs sm:text-sm cursor-pointer"
             >
-              <Calculator className="w-5 h-5 text-slate-700 shrink-0" />
-              <span>Calculette Vent ETE</span>
+              <Calculator className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 shrink-0" />
+              <span className="truncate">Calculette Vent ETE</span>
               <ChevronDown
-                className={`w-4 h-4 text-slate-700 transition-transform duration-150 ${
+                className={`w-4 h-4 text-slate-700 shrink-0 transition-transform duration-150 ${
                   showWindCalc ? 'rotate-180' : ''
                 }`}
               />
@@ -1105,7 +1105,7 @@ export default function App() {
           </div>
 
           {/* Gros bouton 2 : Météo et notam */}
-          <div className="relative w-full" ref={mobileWeatherMenuRef}>
+          <div className="relative w-[74%] max-w-[280px]" ref={mobileWeatherMenuRef}>
             <button
               type="button"
               id="mobile-meteo-notam-btn"
@@ -1113,12 +1113,12 @@ export default function App() {
                 setIsWeatherMenuOpen((prev) => !prev);
                 setShowWindCalc(false);
               }}
-              className="w-full h-11 px-4 bg-slate-100 hover:bg-white active:bg-slate-200 text-slate-900 font-bold rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center gap-2.5 transition-colors text-sm sm:text-base cursor-pointer"
+              className="w-full h-[50px] px-3 bg-slate-100 hover:bg-white active:bg-slate-200 text-slate-900 font-bold rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center gap-2 transition-colors text-xs sm:text-sm cursor-pointer"
             >
-              <Cloud className="w-5 h-5 text-slate-700 shrink-0" />
-              <span>Météo et notam</span>
+              <Cloud className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700 shrink-0" />
+              <span className="truncate">Météo et notam</span>
               <ChevronDown
-                className={`w-4 h-4 text-slate-700 transition-transform duration-150 ${
+                className={`w-4 h-4 text-slate-700 shrink-0 transition-transform duration-150 ${
                   isWeatherMenuOpen ? 'rotate-180' : ''
                 }`}
               />

@@ -290,61 +290,103 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
   }
 
   return (
-    <div className="no-print absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 top-full mt-2 w-[min(96vw,34rem)] max-h-[92vh] overflow-y-auto bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-4 text-left">
-      {/* Message d'erreur éventuel */}
-      {res.error && (
-        <div className="mb-2.5 px-3 py-2 bg-amber-500/10 border border-amber-500/40 rounded-lg text-xs text-amber-300">
-          {res.error}
-        </div>
-      )}
+    <div className="no-print absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 top-0 sm:top-full sm:mt-2 w-[min(96vw,34rem)] max-h-[calc(100dvh-75px)] sm:max-h-[92vh] overflow-y-auto bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-3 sm:p-4 text-left">
+      {/* ZONE FIGÉE / STICKY EN HAUT (Sur mobile : Reset/Croix + Les 4 résultats restent fixes quand on scroll) */}
+      <div className="sticky top-0 z-20 bg-neutral-900 -mx-3 sm:mx-0 px-3 sm:px-0 -mt-3 sm:mt-0 pt-3 sm:pt-0 pb-2.5 border-b border-neutral-800/80 sm:border-b-0">
+        {/* Message d'erreur éventuel */}
+        {res.error && (
+          <div className="mb-2 px-3 py-2 bg-amber-500/10 border border-amber-500/40 rounded-lg text-xs text-amber-300">
+            {res.error}
+          </div>
+        )}
 
-      {/* 1. LES QUATRE RÉSULTATS MIGRÉS TOUT EN HAUT */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2.5">
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg border bg-neutral-800 border-neutral-700">
-          <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-            T sans vent
-          </span>
-          <span className="font-mono text-base text-white">
-            {fmt(res.tSansVent, 'min')}
-          </span>
+        {/* Barre d'en-tête mobile : boutons Reset et Croix AU-DESSUS de la box magenta résultats */}
+        <div className="flex sm:hidden items-center justify-between gap-2 mb-2 pb-0.5">
+          <div className="flex items-center gap-2 text-neutral-300 min-w-0">
+            <button
+              type="button"
+              id="mobile-wind-calc-info-btn"
+              onClick={() => setShowInfo(true)}
+              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors cursor-pointer"
+              title="Détail des calculs et formules"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-xs font-bold text-white tracking-tight truncate">
+              Calculette Vent ETE
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="mobile-wind-calc-reset-btn"
+              onClick={reset}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-white hover:bg-neutral-700 transition-colors cursor-pointer"
+              title="Réinitialiser les valeurs par défaut"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              id="mobile-wind-calc-close-btn"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-white hover:bg-neutral-700 transition-colors cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg border bg-amber-500/10 border-amber-500/40">
-          <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-            T avec vent
-          </span>
-          <span className="font-mono text-lg font-bold text-amber-400">
-            {fmt(res.tAvecVent, 'min')}
-          </span>
-        </div>
+        {/* 1. LES QUATRE RÉSULTATS (Box magenta de la capture : T SANS VENT, T AVEC VENT, CAP À TENIR, VITESSE SOL) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="flex flex-col gap-0.5 px-3 py-1.5 sm:py-2 rounded-lg border bg-neutral-800 border-neutral-700">
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+              T sans vent
+            </span>
+            <span className="font-mono text-base text-white">
+              {fmt(res.tSansVent, 'min')}
+            </span>
+          </div>
 
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg border bg-amber-500/10 border-amber-500/40">
-          <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Cap à tenir
-          </span>
-          <span className="font-mono text-lg font-bold text-amber-400">
-            {res.cap === undefined ? '—' : Math.round(res.cap) + '°'}
-          </span>
-        </div>
+          <div className="flex flex-col gap-0.5 px-3 py-1.5 sm:py-2 rounded-lg border bg-amber-500/10 border-amber-500/40">
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+              T avec vent
+            </span>
+            <span className="font-mono text-lg font-bold text-amber-400">
+              {fmt(res.tAvecVent, 'min')}
+            </span>
+          </div>
 
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-lg border bg-neutral-800 border-neutral-700">
-          <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Vitesse sol
-          </span>
-          <span className="font-mono text-base text-white">
-            {fmt(res.vs, 'kt')}
-          </span>
+          <div className="flex flex-col gap-0.5 px-3 py-1.5 sm:py-2 rounded-lg border bg-amber-500/10 border-amber-500/40">
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Cap à tenir
+            </span>
+            <span className="font-mono text-lg font-bold text-amber-400">
+              {res.cap === undefined ? '—' : Math.round(res.cap) + '°'}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-0.5 px-3 py-1.5 sm:py-2 rounded-lg border bg-neutral-800 border-neutral-700">
+            <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+              Vitesse sol
+            </span>
+            <span className="font-mono text-base text-white">
+              {fmt(res.vs, 'kt')}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* NOTE D'AVERTISSEMENT AVEC BOUTON (i) COLLÉ À GAUCHE ET BOUTONS RESET/FERMER TOUT À DROITE */}
-      <div className="flex items-center justify-between gap-2.5 mb-2.5">
+      {/* CORPS DÉFILANT : NOTE D'AVERTISSEMENT (qui disparaît sous les résultats au scroll) */}
+      <div className="flex items-center justify-between gap-2.5 my-2.5 px-0.5">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             id="wind-calc-info-btn"
             onClick={() => setShowInfo(true)}
-            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white hover:border-neutral-400 transition-colors cursor-pointer"
+            className="hidden sm:flex shrink-0 w-7 h-7 items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white hover:border-neutral-400 transition-colors cursor-pointer"
             title="Détail des calculs et formules"
           >
             <Info className="w-3.5 h-3.5" />
@@ -359,8 +401,8 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
           </div>
         </div>
 
-        {/* Boutons Reset & Fermer tout à droite */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Boutons Reset & Fermer tout à droite (Affichés uniquement sur desktop ici, car sur mobile ils sont au-dessus des résultats) */}
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             id="wind-calc-reset-btn"
@@ -875,11 +917,14 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
               background: `linear-gradient(to right, #3ABDF9 ${windPercent}%, #374151 ${windPercent}%)`,
               accentColor: '#3ABDF9',
             }}
-            className="w-full accent-[#3ABDF9] h-2 rounded-lg cursor-pointer appearance-none border border-neutral-700/60"
+            className="w-full accent-[#3ABDF9] h-2.5 sm:h-2 rounded-lg cursor-pointer appearance-none border border-neutral-700/60"
             title="Curseur Vitesse du vent (0 à 55 kt)"
           />
         </div>
       </div>
+
+      {/* Espace de sécurité en bas pour que le slider de vent soit toujours 100% accessible au doigt sur mobile */}
+      <div className="h-8 sm:h-2" />
 
       {/* POPUP MODALE : Détail des calculs et formules mathématiques / aéronautiques */}
       {showInfo && (
