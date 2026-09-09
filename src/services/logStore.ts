@@ -5,7 +5,7 @@ import { FlightPlan } from '../types';
 // Domaine court de redirection vers l'application.
 // HTTP volontaire : la redirection OVH ne gère pas HTTPS.
 // Laisser vide pour utiliser l'adresse courante du navigateur.
-export const APP_BASE_URL = 'http://logv.fr';
+export const APP_BASE_URL = 'https://log-vfr.ai.studio';
 
 /**
  * Alphabet de 56 symboles sans les caractères ambigus (0, O, 1, l, I).
