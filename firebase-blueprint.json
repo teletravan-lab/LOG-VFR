@@ -49,9 +49,21 @@
           "type": "string",
           "description": "Unique log identifier in format JJ-MM-XXXXXX"
         },
+        "outbound": {
+          "type": "object",
+          "description": "Outbound flight plan details"
+        },
+        "return": {
+          "type": "object",
+          "description": "Return flight plan details or null"
+        },
+        "activeLeg": {
+          "type": "string",
+          "description": "Active leg displayed ('outbound' | 'return')"
+        },
         "flightPlan": {
           "type": "object",
-          "description": "Flight plan details"
+          "description": "Flight plan details (legacy backward compatibility)"
         },
         "createdAt": {
           "type": "string",
@@ -66,7 +78,7 @@
           "description": "Firestore Timestamp expiring in 6 months"
         }
       },
-      "required": ["id", "flightPlan"]
+      "required": ["id"]
     }
   },
   "firestore": {

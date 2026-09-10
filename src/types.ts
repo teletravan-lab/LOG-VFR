@@ -94,3 +94,14 @@ export interface FlightPlan {
   totalEteOverride?: string;
   totalConsoOverride?: string;
 }
+
+export interface StoredFlightLog {
+  id: string;
+  outbound: FlightPlan;
+  return: FlightPlan | null;
+  activeLeg: 'outbound' | 'return';
+  flightPlan?: FlightPlan; // Compatibilité ascendante
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: any;
+}

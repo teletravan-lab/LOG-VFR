@@ -84,11 +84,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 /**
  * Enregistre le plan de vol dans Firestore avec merge: true.
+ * Supporte le vol aller (outbound) et le vol retour optionnel (return).
  * L'identifiant complet (JJ-MM-XXXXXX) ne change jamais une fois créé.
  */
 export async function saveFlightLogToFirestore(
   logId: string,
-  flightPlan: FlightPlan,
+  outbound: FlightPlan,
+  returnPlan: FlightPlan | null = null,
+  activeLeg: 'outbound' | 'return' = 'outbound',
   existingCreatedAt?: string
 ): Promise<{ success: boolean; savedAt: Date }> {
   const path = `flightLogs/${logId}`;
@@ -97,13 +100,17 @@ export async function saveFlightLogToFirestore(
     const docRef = doc(db, 'flightLogs', logId);
 
     // Sérialisation propre pour éliminer toute valeur `undefined` non acceptée par Firestore
-    const cleanFlightPlan = JSON.parse(JSON.stringify(flightPlan));
+    const cleanOutbound = JSON.parse(JSON.stringify(outbound));
+    const cleanReturn = returnPlan ? JSON.parse(JSON.stringify(returnPlan)) : null;
 
     await setDoc(
       docRef,
       {
         id: logId,
-        flightPlan: cleanFlightPlan,
+        outbound: cleanOutbound,
+        return: cleanReturn,
+        activeLeg,
+        flightPlan: cleanOutbound, // Rétrocompatibilité ascendante avec les anciennes versions
         updatedAt: now.toISOString(),
         expiresAt: getSixMonthsExpiry(now),
         createdAt: existingCreatedAt || now.toISOString(),
@@ -120,10 +127,18 @@ export async function saveFlightLogToFirestore(
 
 /**
  * Charge un log de vol depuis Firestore à partir de son identifiant JJ-MM-XXXXXX.
+ * COMPATIBILITÉ ASCENDANTE OBLIGATOIRE :
+ * Si "outbound" est absent et "flightPlan" présent, traite "flightPlan" comme le vol aller et "return" comme null.
  */
 export async function loadFlightLogFromFirestore(
   logId: string
-): Promise<{ flightPlan: FlightPlan; createdAt: string } | null> {
+): Promise<{
+  outbound: FlightPlan;
+  returnPlan: FlightPlan | null;
+  activeLeg: 'outbound' | 'return';
+  createdAt: string;
+  flightPlan: FlightPlan;
+} | null> {
   const path = `flightLogs/${logId}`;
   try {
     const docRef = doc(db, 'flightLogs', logId);
@@ -134,12 +149,24 @@ export async function loadFlightLogFromFirestore(
     }
 
     const data = docSnap.data();
-    if (!data || !data.flightPlan) {
+    if (!data) {
       return null;
     }
 
+    // Compatibilité ascendante : support des documents existants sans champ 'outbound'
+    const outbound = (data.outbound || data.flightPlan) as FlightPlan | undefined;
+    if (!outbound) {
+      return null;
+    }
+
+    const returnPlan = (data.return || null) as FlightPlan | null;
+    const activeLeg = (data.activeLeg === 'return' ? 'return' : 'outbound') as 'outbound' | 'return';
+
     return {
-      flightPlan: data.flightPlan as FlightPlan,
+      outbound,
+      returnPlan,
+      activeLeg,
+      flightPlan: outbound,
       createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString(),
     };
   } catch (error) {
@@ -150,22 +177,24 @@ export async function loadFlightLogFromFirestore(
 
 /**
  * Formate l'URL complète avec le protocole, le domaine et le paramètre ?log=JJ-MM-XXXXXX
+ * Ajoute optionnellement &v=retour si leg === 'return'
  */
-export function getLogUrl(logId: string): string {
+export function getLogUrl(logId: string, leg?: 'outbound' | 'return'): string {
   const base = APP_BASE_URL.trim();
+  const vSuffix = leg === 'return' ? '&v=retour' : '';
   if (base !== '') {
     const cleanBase = base.replace(/\/+$/, '');
-    return `${cleanBase}/?log=${encodeURIComponent(logId)}`;
+    return `${cleanBase}/?log=${encodeURIComponent(logId)}${vSuffix}`;
   }
 
-  if (typeof window === 'undefined') return `?log=${encodeURIComponent(logId)}`;
-  return `${window.location.origin}${window.location.pathname}?log=${encodeURIComponent(logId)}`;
+  if (typeof window === 'undefined') return `?log=${encodeURIComponent(logId)}${vSuffix}`;
+  return `${window.location.origin}${window.location.pathname}?log=${encodeURIComponent(logId)}${vSuffix}`;
 }
 
 /**
  * Retourne l'URL sans le protocole (sans "https://"), pour un affichage plus court à l'écran.
  */
-export function getLogUrlForDisplay(logId: string): string {
-  const fullUrl = getLogUrl(logId);
+export function getLogUrlForDisplay(logId: string, leg?: 'outbound' | 'return'): string {
+  const fullUrl = getLogUrl(logId, leg);
   return fullUrl.replace(/^https?:\/\//, '');
 }

@@ -21,12 +21,18 @@ import {
   Check,
   Loader2,
   X,
+  Upload,
+  Wrench,
+  ArrowLeftRight,
+  AlertCircle,
 } from 'lucide-react';
 import { FlightPlan, NavLeg, Waypoint } from './types';
 import { A5KneeboardView } from './components/A5KneeboardView';
 import { FlightPlanEditor } from './components/FlightPlanEditor';
 import { FRENCH_AERODROMES } from './data/aerodromes';
 import { DEFAULT_OPENAIP_KEY } from './services/openaip';
+import { importGpxToFlightPlan } from './services/gpxImport';
+import { createReturnFlightPlan } from './services/flightReturn';
 import {
   subscribeToAnalytics,
   incrementPrintCount,
@@ -89,8 +95,8 @@ const BLANK_FLIGHT_PLAN: FlightPlan = {
 };
 
 export default function App() {
-  // Flight plan state: default state on site load is empty aircraft parameters (as right after clicking reset)
-  const [flightPlan, setFlightPlan] = useState<FlightPlan>(() => {
+  // Flight plan state: vol aller (outbound) par défaut
+  const [outboundPlan, setOutboundPlan] = useState<FlightPlan>(() => {
     const today = new Date().toISOString().split('T')[0];
     return {
       aircraftModel: '',
@@ -151,6 +157,25 @@ export default function App() {
     };
   });
 
+  const [returnPlan, setReturnPlan] = useState<FlightPlan | null>(null);
+  const [activeLeg, setActiveLeg] = useState<'outbound' | 'return'>('outbound');
+
+  // Plan de vol actuellement visualisé et édité
+  const flightPlan = activeLeg === 'return' && returnPlan ? returnPlan : outboundPlan;
+
+  const setFlightPlan = (action: React.SetStateAction<FlightPlan>) => {
+    if (activeLeg === 'return') {
+      setReturnPlan((prev) => {
+        const base = prev || createReturnFlightPlan(outboundPlan);
+        return typeof action === 'function'
+          ? (action as (p: FlightPlan) => FlightPlan)(base)
+          : action;
+      });
+    } else {
+      setOutboundPlan(action);
+    }
+  };
+
   const [openAipApiKey, setOpenAipApiKey] = useState<string>(DEFAULT_OPENAIP_KEY);
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [previewZoom, setPreviewZoom] = useState<number>(100);
@@ -180,9 +205,28 @@ export default function App() {
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [isLogLoading, setIsLogLoading] = useState<boolean>(false);
 
+  // --- Gestion de l'import GPX SkyVector ---
+  const gpxFileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingGpxText, setPendingGpxText] = useState<string | null>(null);
+  const [showGpxConfirmModal, setShowGpxConfirmModal] = useState<boolean>(false);
+  const [gpxErrorMessage, setGpxErrorMessage] = useState<string | null>(null);
+  const [isImportingGpx, setIsImportingGpx] = useState<boolean>(false);
+
+  // --- Gestion du vol retour ---
+  const [showReturnNote, setShowReturnNote] = useState<boolean>(false);
+  const returnNoteTimerRef = useRef<NodeJS.Timeout | number | null>(null);
+
+  const isReadyForReturn = Boolean(
+    (outboundPlan.departure?.oaci?.trim() || outboundPlan.departure?.name?.trim()) &&
+      (outboundPlan.destination?.oaci?.trim() || outboundPlan.destination?.name?.trim())
+  );
+
   const createdAtRef = useRef<string | undefined>(undefined);
   const lastSavedHashRef = useRef<string>('');
   const debounceTimerRef = useRef<NodeJS.Timeout | number | null>(null);
+  const outboundPlanRef = useRef<FlightPlan>(outboundPlan);
+  const returnPlanRef = useRef<FlightPlan | null>(returnPlan);
+  const activeLegRef = useRef<'outbound' | 'return'>(activeLeg);
   const flightPlanRef = useRef<FlightPlan>(flightPlan);
   const isInitialMountRef = useRef<boolean>(true);
   const saveStatusRef = useRef<SaveState>('unsaved');
@@ -191,7 +235,19 @@ export default function App() {
     saveStatusRef.current = saveStatus.state;
   }, [saveStatus.state]);
 
-  // Synchronise le ref sur le plan de vol courant
+  // Synchronise les refs sur les plans de vol et le leg actif
+  useEffect(() => {
+    outboundPlanRef.current = outboundPlan;
+  }, [outboundPlan]);
+
+  useEffect(() => {
+    returnPlanRef.current = returnPlan;
+  }, [returnPlan]);
+
+  useEffect(() => {
+    activeLegRef.current = activeLeg;
+  }, [activeLeg]);
+
   useEffect(() => {
     flightPlanRef.current = flightPlan;
   }, [flightPlan]);
@@ -200,16 +256,35 @@ export default function App() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const paramLogId = searchParams.get('log');
+    const vParam = searchParams.get('v'); // 'aller' ou 'retour'
 
     if (paramLogId) {
       setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
       loadFlightLogFromFirestore(paramLogId)
         .then((result) => {
-          if (result && result.flightPlan) {
-            setFlightPlan(result.flightPlan);
-            flightPlanRef.current = result.flightPlan;
+          if (result && result.outbound) {
+            setOutboundPlan(result.outbound);
+            setReturnPlan(result.returnPlan);
+
+            let initialLeg: 'outbound' | 'return' = result.activeLeg || 'outbound';
+            if (vParam === 'aller') {
+              initialLeg = 'outbound';
+            } else if (vParam === 'retour' && result.returnPlan) {
+              initialLeg = 'return';
+            }
+            setActiveLeg(initialLeg);
+
+            outboundPlanRef.current = result.outbound;
+            returnPlanRef.current = result.returnPlan;
+            activeLegRef.current = initialLeg;
             createdAtRef.current = result.createdAt;
-            lastSavedHashRef.current = JSON.stringify(result.flightPlan);
+
+            lastSavedHashRef.current = JSON.stringify({
+              outbound: result.outbound,
+              return: result.returnPlan,
+              activeLeg: initialLeg,
+            });
+
             setLogId(paramLogId);
             localStorage.setItem('skylog_current_log_id', paramLogId);
             setSaveStatus({ state: 'saved', label: 'Enregistré' });
@@ -253,16 +328,75 @@ export default function App() {
     }));
   };
 
+  // Import GPX SkyVector
+  const executeGpxImport = async (xmlText: string) => {
+    setIsImportingGpx(true);
+    try {
+      const updatedPlan = await importGpxToFlightPlan(xmlText, flightPlan, openAipApiKey);
+      setFlightPlan(updatedPlan);
+      setGpxErrorMessage(null);
+    } catch (err) {
+      setGpxErrorMessage(
+        err instanceof Error ? err.message : "Erreur lors de l'import du plan GPX."
+      );
+    } finally {
+      setIsImportingGpx(false);
+      setPendingGpxText(null);
+      setShowGpxConfirmModal(false);
+    }
+  };
+
+  const handleGpxFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (file.size > 1024 * 1024) {
+      setGpxErrorMessage('Le fichier dépasse la taille maximale autorisée de 1 Mo.');
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const hasWaypoints = flightPlan.waypoints && flightPlan.waypoints.length > 0;
+      if (hasWaypoints) {
+        setPendingGpxText(text);
+        setShowGpxConfirmModal(true);
+      } else {
+        await executeGpxImport(text);
+      }
+    } catch (err) {
+      setGpxErrorMessage(
+        err instanceof Error ? err.message : 'Impossible de lire le fichier sélectionné.'
+      );
+    }
+  };
+
   // Fonction centrale d'exécution d'une sauvegarde Firestore
-  const executeSave = async (targetLogId: string, currentPlan: FlightPlan) => {
+  const executeSave = async (
+    targetLogId: string,
+    outbound: FlightPlan,
+    retPlan: FlightPlan | null,
+    actLeg: 'outbound' | 'return'
+  ) => {
     setIsSaving(true);
     if (saveStatusRef.current !== 'error') {
       setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
     }
     try {
-      const res = await saveFlightLogToFirestore(targetLogId, currentPlan, createdAtRef.current);
+      const res = await saveFlightLogToFirestore(
+        targetLogId,
+        outbound,
+        retPlan,
+        actLeg,
+        createdAtRef.current
+      );
       if (res.success) {
-        lastSavedHashRef.current = JSON.stringify(currentPlan);
+        lastSavedHashRef.current = JSON.stringify({
+          outbound,
+          return: retPlan,
+          activeLeg: actLeg,
+        });
         setSaveStatus({ state: 'saved', label: 'Enregistré' });
       } else {
         setSaveStatus({ state: 'error', label: 'Échec' });
@@ -278,6 +412,13 @@ export default function App() {
   useEffect(() => {
     // Sauvegarde intermédiaire locale systématique
     try {
+      localStorage.setItem('skylog_intermediate_outbound', JSON.stringify(outboundPlan));
+      if (returnPlan) {
+        localStorage.setItem('skylog_intermediate_return', JSON.stringify(returnPlan));
+      } else {
+        localStorage.removeItem('skylog_intermediate_return');
+      }
+      localStorage.setItem('skylog_intermediate_active_leg', activeLeg);
       localStorage.setItem('skylog_intermediate_plan', JSON.stringify(flightPlan));
     } catch (e) {
       // ignore
@@ -293,7 +434,11 @@ export default function App() {
       return;
     }
 
-    const currentHash = JSON.stringify(flightPlan);
+    const currentHash = JSON.stringify({
+      outbound: outboundPlan,
+      return: returnPlan,
+      activeLeg,
+    });
     if (currentHash === lastSavedHashRef.current) {
       // Données identiques : aucune écriture inutile
       return;
@@ -310,7 +455,7 @@ export default function App() {
 
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
-      executeSave(logId, flightPlan);
+      executeSave(logId, outboundPlan, returnPlan, activeLeg);
     }, 1500);
 
     return () => {
@@ -318,7 +463,7 @@ export default function App() {
         clearTimeout(debounceTimerRef.current as any);
       }
     };
-  }, [flightPlan, logId]);
+  }, [outboundPlan, returnPlan, activeLeg, logId]);
 
   // Sauvegarde forcée lors du changement de visibilité (départ / masquage de l'onglet)
   useEffect(() => {
@@ -328,8 +473,18 @@ export default function App() {
           clearTimeout(debounceTimerRef.current as any);
           debounceTimerRef.current = null;
         }
-        if (JSON.stringify(flightPlanRef.current) !== lastSavedHashRef.current) {
-          executeSave(logId, flightPlanRef.current);
+        const currentHash = JSON.stringify({
+          outbound: outboundPlanRef.current,
+          return: returnPlanRef.current,
+          activeLeg: activeLegRef.current,
+        });
+        if (currentHash !== lastSavedHashRef.current) {
+          executeSave(
+            logId,
+            outboundPlanRef.current,
+            returnPlanRef.current,
+            activeLegRef.current
+          );
         }
       }
     };
@@ -339,6 +494,58 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [logId]);
+
+  // Action clic sur le bouton "Créer vol retour" / commutateur "Voir vol retour / aller"
+  const handleReturnButtonClick = async () => {
+    if (!returnPlan) {
+      // État 1 : AÉRODROMES MANQUANTS
+      if (!isReadyForReturn) {
+        setShowReturnNote(true);
+        if (returnNoteTimerRef.current) {
+          clearTimeout(returnNoteTimerRef.current as any);
+        }
+        returnNoteTimerRef.current = setTimeout(() => {
+          setShowReturnNote(false);
+          returnNoteTimerRef.current = null;
+        }, 4000);
+        return;
+      }
+
+      // État 2 : PRÊT
+      // Au clic : crée le vol retour, sauvegarde le log si ce n'était pas déjà fait
+      // (génère l'identifiant et le lien), puis bascule l'affichage sur le retour.
+      const newReturn = createReturnFlightPlan(outboundPlan);
+      setReturnPlan(newReturn);
+      setActiveLeg('return');
+
+      let currentLogId = logId;
+      if (!currentLogId) {
+        currentLogId = generateLogId();
+        setLogId(currentLogId);
+        createdAtRef.current = new Date().toISOString();
+        localStorage.setItem('skylog_current_log_id', currentLogId);
+      }
+
+      const searchParams = new URLSearchParams(window.location.search);
+      searchParams.set('log', currentLogId);
+      searchParams.set('v', 'retour');
+      const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
+      window.history.replaceState(null, '', newUrl);
+
+      setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
+      await executeSave(currentLogId, outboundPlan, newReturn, 'return');
+    } else {
+      // État 3 : UN RETOUR EXISTE
+      // Le bouton devient un commutateur.
+      const nextLeg: 'outbound' | 'return' = activeLeg === 'outbound' ? 'return' : 'outbound';
+      setActiveLeg(nextLeg);
+
+      const searchParams = new URLSearchParams(window.location.search);
+      searchParams.set('v', nextLeg === 'return' ? 'retour' : 'aller');
+      const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
+      window.history.replaceState(null, '', newUrl);
+    }
+  };
 
   // Action clic sur le bouton "Sauvegarder" ou "Échec — Réessayer"
   const handleManualSave = async () => {
@@ -350,11 +557,16 @@ export default function App() {
       localStorage.setItem('skylog_current_log_id', newLogId);
 
       // Met à jour l'URL sans recharger la page
-      const newUrl = `${window.location.pathname}?log=${newLogId}`;
+      const searchParams = new URLSearchParams(window.location.search);
+      searchParams.set('log', newLogId);
+      if (returnPlan) {
+        searchParams.set('v', activeLeg === 'return' ? 'retour' : 'aller');
+      }
+      const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
       window.history.replaceState(null, '', newUrl);
 
       setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
-      await executeSave(newLogId, flightPlan);
+      await executeSave(newLogId, outboundPlan, returnPlan, activeLeg);
     } else {
       // Document déjà existant ou relance après échec : force une sauvegarde immédiate
       if (debounceTimerRef.current) {
@@ -362,7 +574,7 @@ export default function App() {
         debounceTimerRef.current = null;
       }
       setSaveStatus({ state: 'saving', label: 'Enregistrement...' });
-      await executeSave(logId, flightPlan);
+      await executeSave(logId, outboundPlan, returnPlan, activeLeg);
     }
   };
 
@@ -370,15 +582,18 @@ export default function App() {
   const logUrls = useMemo(
     () =>
       logId
-        ? { copyUrl: getLogUrl(logId), displayUrl: getLogUrlForDisplay(logId) }
+        ? {
+            copyUrl: getLogUrl(logId, activeLeg === 'return' ? 'return' : undefined),
+            displayUrl: getLogUrlForDisplay(logId, activeLeg === 'return' ? 'return' : undefined),
+          }
         : { copyUrl: '', displayUrl: '' },
-    [logId]
+    [logId, activeLeg]
   );
 
   // Copie de l'URL complète dans le presse-papiers avec feedback
   const handleCopyUrl = async () => {
     if (!logId) return;
-    const copyUrl = getLogUrl(logId);
+    const copyUrl = getLogUrl(logId, activeLeg === 'return' ? 'return' : undefined);
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(copyUrl);
@@ -1269,8 +1484,8 @@ export default function App() {
             activeTab === 'preview' ? 'hidden lg:block' : 'block'
           }`}
         >
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+          <div className="relative flex items-center justify-between gap-2 min-w-0 min-h-[32px] lg:min-h-[40px]">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0 z-10">
               <button
                 type="button"
                 id="easter-egg-default-flight-btn"
@@ -1283,96 +1498,84 @@ export default function App() {
               <span>Paramétrage</span>
             </h2>
 
-            {/* Mobile uniquement : Outil de sauvegarde sur la même ligne que PARAMÉTRAGE */}
-            <div className="lg:hidden flex items-center gap-1.5 min-w-0 max-w-[62%] sm:max-w-[70%] justify-end">
-              {!logId ? (
-                <button
-                  type="button"
-                  id="mobile-save-flight-log-btn"
-                  onClick={handleManualSave}
-                  disabled={isSaving}
-                  className="h-8 px-2.5 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer whitespace-nowrap shrink-0"
-                  title="Sauvegarder le plan de vol"
-                >
-                  <Save className="w-3.5 h-3.5 shrink-0" />
-                  <span>Sauvegarder</span>
-                </button>
-              ) : (
-                <>
-                  {/* Pastille / Picto statut compact */}
-                  <button
-                    type="button"
-                    id="mobile-log-status-bar"
-                    disabled={saveStatus.state !== 'error' || isSaving}
-                    onClick={saveStatus.state === 'error' ? handleManualSave : undefined}
-                    className={`h-8 w-8 rounded-lg flex items-center justify-center gap-1 border transition-all shrink-0 select-none ${
-                      saveStatus.state === 'error'
-                        ? 'bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border-rose-300 text-rose-700 cursor-pointer shadow-2xs'
-                        : saveStatus.state === 'saving'
-                        ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-default'
-                        : 'bg-slate-100 border-slate-200 text-slate-700 cursor-default'
-                    }`}
-                    title={
-                      saveStatus.state === 'error'
-                        ? 'Erreur lors de l’enregistrement. Cliquez pour réessayer.'
-                        : saveStatus.state === 'saving'
-                        ? 'Enregistrement en cours...'
-                        : 'Enregistré'
-                    }
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        saveStatus.state === 'error'
-                          ? 'bg-rose-500'
-                          : saveStatus.state === 'saving'
-                          ? 'bg-amber-500 animate-pulse'
-                          : 'bg-emerald-500'
-                      }`}
-                    />
-                    {saveStatus.state === 'error' ? (
-                      <X className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.5} />
-                    ) : saveStatus.state === 'saving' ? (
-                      <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
-                    ) : (
-                      <Save className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    )}
-                  </button>
+            {/* Bouton GPX centré sur la colonne paramétrage */}
+            <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-10 pointer-events-auto">
+              <button
+                type="button"
+                id="import-gpx-btn"
+                onClick={() => gpxFileInputRef.current?.click()}
+                disabled={isImportingGpx}
+                className="h-8 lg:h-10 px-2.5 lg:px-3.5 lg:py-2 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-xs lg:text-sm font-bold flex items-center justify-center gap-1.5 lg:gap-2 shadow-2xs lg:shadow-sm hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
+                title="Importer un fichier GPX SkyVector"
+              >
+                {isImportingGpx ? (
+                  <Loader2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 animate-spin shrink-0" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
+                )}
+                <span>GPX</span>
+              </button>
 
-                  {/* Bouton lien copiable avec texte tronqué */}
-                  <button
-                    type="button"
-                    id="mobile-log-share-link-btn"
-                    onClick={handleCopyUrl}
-                    title="Conservez ce lien pour retrouver et modifier ce log"
-                    className="h-8 px-2 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs min-w-0 overflow-hidden flex-1"
-                  >
-                    {isCopied ? (
-                      <div className="flex items-center gap-1.5 min-w-0 w-full">
-                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <div className="flex flex-col items-start justify-center text-left min-w-0 overflow-hidden w-full">
-                          <span className="font-semibold text-[10px] text-emerald-700 leading-tight block truncate w-full">
-                            Copié !
-                          </span>
-                          <span className="text-[8px] text-slate-500 font-normal leading-tight block truncate w-full">
-                            Conservez ce lien pour ce log
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 min-w-0 w-full">
-                        <Copy className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <div className="flex flex-col items-start justify-center text-left min-w-0 overflow-hidden w-full">
-                          <span className="font-mono text-[10px] text-sky-700 hover:underline underline-offset-2 font-semibold leading-tight block truncate w-full">
-                            {logUrls.displayUrl}
-                          </span>
-                          <span className="text-[8px] text-slate-500 font-normal leading-tight block truncate w-full">
-                            Conservez ce lien pour ce log
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                </>
+              <input
+                ref={gpxFileInputRef}
+                type="file"
+                accept=".gpx"
+                className="hidden"
+                onChange={handleGpxFileChange}
+              />
+            </div>
+
+            {/* Bouton vol retour à trois états sur la bordure droite de la colonne paramètre */}
+            <div className="relative flex items-center justify-end z-20">
+              <button
+                type="button"
+                id="return-flight-btn"
+                onClick={handleReturnButtonClick}
+                className={`h-8 lg:h-10 px-2.5 lg:px-3.5 lg:py-2 rounded-lg text-xs lg:text-sm font-bold flex items-center justify-center gap-1.5 lg:gap-2 transition-all cursor-pointer whitespace-nowrap min-w-[145px] lg:min-w-[165px] ${
+                  !returnPlan
+                    ? isReadyForReturn
+                      ? 'bg-sky-700 hover:bg-sky-800 active:bg-sky-900 text-white shadow-2xs lg:shadow-sm hover:shadow'
+                      : 'bg-slate-200 hover:bg-slate-200 text-slate-400 border border-slate-300 shadow-2xs'
+                    : 'bg-sky-700 hover:bg-sky-800 active:bg-sky-900 text-white shadow-2xs lg:shadow-sm hover:shadow'
+                }`}
+                title={
+                  !returnPlan
+                    ? isReadyForReturn
+                      ? 'Créer le vol retour'
+                      : 'Aérodromes manquants pour créer le vol retour'
+                    : activeLeg === 'outbound'
+                    ? 'Basculer vers le vol retour'
+                    : 'Basculer vers le vol aller'
+                }
+              >
+                {!returnPlan ? (
+                  <Wrench className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
+                ) : (
+                  <ArrowLeftRight className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
+                )}
+                <span>
+                  {!returnPlan
+                    ? 'Créer vol retour'
+                    : activeLeg === 'outbound'
+                    ? 'Voir vol retour'
+                    : 'Voir vol aller'}
+                </span>
+              </button>
+
+              {/* Note explicative visible 4 secondes à l'écran si clic en État 1 */}
+              {showReturnNote && (
+                <div
+                  id="return-flight-explanation-note"
+                  role="alert"
+                  className="absolute right-0 top-full mt-2 w-72 sm:w-80 p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-lg shadow-lg z-50 animate-in fade-in slide-in-from-top-1 pointer-events-none text-left"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="leading-snug font-medium">
+                      Renseignez un aérodrome de départ et un aérodrome d'arrivée pour créer le vol retour.
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -1393,10 +1596,10 @@ export default function App() {
             activeTab === 'editor' ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          {/* Preview Toolbar (Bouton Sauvegarder ou Barre d'état + Lien à gauche sur desktop, Imprimer à droite) */}
-          <div className="no-print w-full max-w-[148mm] flex items-center justify-end lg:justify-between gap-2 mb-2 px-1">
-            {/* GAUCHE : Outil de sauvegarde (Desktop uniquement, sur mobile il est sur la Page 1 à côté de Paramétrage) */}
-            <div className="hidden lg:flex items-center gap-2 flex-wrap sm:flex-nowrap min-w-0">
+          {/* Preview Toolbar (Bouton Sauvegarder ou Barre d'état + Lien à gauche, Imprimer à droite) */}
+          <div className="no-print w-full max-w-[148mm] flex items-center justify-between gap-2 mb-2 px-1">
+            {/* GAUCHE : Outil de sauvegarde */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap min-w-0">
               {!logId ? (
                 <button
                   type="button"
@@ -1625,6 +1828,98 @@ export default function App() {
                 className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg"
               >
                 J'ai compris
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. GPX CONFIRMATION MODAL */}
+      {showGpxConfirmModal && (
+        <div className="no-print fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-5 shadow-2xl border border-slate-200 text-slate-800 text-xs space-y-4">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Upload className="w-4 h-4 text-sky-700" />
+                <span>Remplacer les waypoints existants ?</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGpxConfirmModal(false);
+                  setPendingGpxText(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-700 leading-relaxed">
+              Le plan de vol actuel contient déjà des waypoints. L'importation du fichier GPX SkyVector
+              remplacera le départ, l'arrivée, les waypoints et les branches de navigation.
+              Tous vos autres paramètres de vol (avion, immatriculation, vitesse, vent, carburant, etc.) seront conservés.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGpxConfirmModal(false);
+                  setPendingGpxText(null);
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                id="confirm-gpx-replace-btn"
+                onClick={() => {
+                  if (pendingGpxText) {
+                    executeGpxImport(pendingGpxText);
+                  }
+                }}
+                disabled={isImportingGpx}
+                className="px-3.5 py-2 bg-sky-700 hover:bg-sky-800 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                {isImportingGpx ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                <span>Remplacer les waypoints</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. GPX ERROR MODAL */}
+      {gpxErrorMessage && (
+        <div className="no-print fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-5 shadow-2xl border border-rose-200 text-slate-800 text-xs space-y-4">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h3 className="font-bold text-sm text-rose-700 flex items-center gap-2">
+                <Info className="w-4 h-4 text-rose-600" />
+                <span>Erreur d'import GPX</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setGpxErrorMessage(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-700 leading-relaxed font-medium">
+              {gpxErrorMessage}
+            </p>
+
+            <div className="flex justify-end pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setGpxErrorMessage(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Fermer
               </button>
             </div>
           </div>

@@ -188,10 +188,55 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
       });
     }
 
-    // Single page case: up to 5 rows (Departure + up to 4 branches) fit comfortably on a single A5 sheet
-    // For a blank flight log, fits up to 7 rows (Departure + 6 branches) on a single A5 sheet
-    const maxSinglePageRows = isBlankFlight ? 7 : 5;
-    if (allSegments.length <= maxSinglePageRows) {
+    // Pour un log vierge : conservation stricte du comportement existant (laisse le log vierge tel quel)
+    if (isBlankFlight) {
+      const maxSinglePageRows = 7;
+      if (allSegments.length <= maxSinglePageRows) {
+        return [
+          {
+            pageIndex: 1,
+            totalPages: 1,
+            segments: allSegments,
+            showDestination: true,
+          },
+        ];
+      }
+
+      const totalPages = Math.ceil(allSegments.length / LEGS_PER_PAGE);
+      const result: PageData[] = [];
+
+      for (let p = 0; p < totalPages; p++) {
+        const startIdx = p * LEGS_PER_PAGE;
+        const endIdx = Math.min(startIdx + LEGS_PER_PAGE, allSegments.length);
+        const pageSegments = allSegments.slice(startIdx, endIdx);
+        const isLastPage = p === totalPages - 1;
+
+        let repriseNotice: string | undefined;
+        if (p > 0) {
+          const resumePointName = pageSegments[0]?.fromName || 'Point intermédiaire';
+          repriseNotice = `↪ Reprise du dernier point : ${resumePointName} (Suite de la page ${p}/${totalPages})`;
+        }
+
+        result.push({
+          pageIndex: p + 1,
+          totalPages,
+          segments: pageSegments,
+          showDestination: isLastPage,
+          reprisePointNotice: repriseNotice,
+        });
+      }
+
+      return result;
+    }
+
+    // Log personnalisé :
+    // Passer à la page suivante après la branche 6.
+    // Page 1 : Départ + branches 1 à 6 (soit 7 segments maximum).
+    // Pages suivantes : jusqu'à 6 branches par page.
+    const PAGE_1_MAX_SEGMENTS = 7; // Départ + 6 branches
+    const SUBSEQUENT_PAGE_MAX_SEGMENTS = 6; // 6 branches par page supplémentaire
+
+    if (allSegments.length <= PAGE_1_MAX_SEGMENTS) {
       return [
         {
           pageIndex: 1,
@@ -202,21 +247,30 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
       ];
     }
 
-    // Multi-page case
-    const totalPages = Math.ceil(allSegments.length / LEGS_PER_PAGE);
+    // Cas multi-pages pour log personnalisé :
+    const remainingSegments = allSegments.length - PAGE_1_MAX_SEGMENTS;
+    const additionalPages = Math.ceil(remainingSegments / SUBSEQUENT_PAGE_MAX_SEGMENTS);
+    const totalPages = 1 + additionalPages;
     const result: PageData[] = [];
 
-    for (let p = 0; p < totalPages; p++) {
-      const startIdx = p * LEGS_PER_PAGE;
-      const endIdx = Math.min(startIdx + LEGS_PER_PAGE, allSegments.length);
+    // Page 1 : Départ + branches 1 à 6 (s'arrête après la branche 6)
+    result.push({
+      pageIndex: 1,
+      totalPages,
+      segments: allSegments.slice(0, PAGE_1_MAX_SEGMENTS),
+      showDestination: false,
+      reprisePointNotice: undefined,
+    });
+
+    // Pages suivantes (à partir de la branche 7)
+    for (let p = 1; p < totalPages; p++) {
+      const startIdx = PAGE_1_MAX_SEGMENTS + (p - 1) * SUBSEQUENT_PAGE_MAX_SEGMENTS;
+      const endIdx = Math.min(startIdx + SUBSEQUENT_PAGE_MAX_SEGMENTS, allSegments.length);
       const pageSegments = allSegments.slice(startIdx, endIdx);
       const isLastPage = p === totalPages - 1;
 
-      let repriseNotice: string | undefined;
-      if (p > 0) {
-        const resumePointName = pageSegments[0]?.fromName || 'Point intermédiaire';
-        repriseNotice = `↪ Reprise du dernier point : ${resumePointName} (Suite de la page ${p}/${totalPages})`;
-      }
+      const resumePointName = pageSegments[0]?.fromName || 'Point intermédiaire';
+      const repriseNotice = `↪ Reprise du dernier point : ${resumePointName} (Suite de la page ${p}/${totalPages})`;
 
       result.push({
         pageIndex: p + 1,
@@ -228,7 +282,7 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
     }
 
     return result;
-  }, [flightPlan.departure, flightPlan.waypoints, flightPlan.legs, flightPlan.destination.name, isPrintMode]);
+  }, [flightPlan.departure, flightPlan.waypoints, flightPlan.legs, flightPlan.destination.name, isPrintMode, isBlankFlight]);
 
   const pagesToRender: PageData[] = React.useMemo(() => {
     if (isPrintMode && duplicateIfSinglePage && pages.length === 1) {
