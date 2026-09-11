@@ -192,9 +192,10 @@ export function getLogUrl(logId: string, leg?: 'outbound' | 'return'): string {
 }
 
 /**
- * Retourne l'URL sans le protocole (sans "https://"), pour un affichage plus court à l'écran.
+ * Retourne uniquement la partie personnalisée courte de l'URL (ex: "/?log=10-09-uEY3Th"),
+ * pour un affichage compact permettant d'aligner les 3 boutons dans la barre d'outils.
  */
 export function getLogUrlForDisplay(logId: string, leg?: 'outbound' | 'return'): string {
-  const fullUrl = getLogUrl(logId, leg);
-  return fullUrl.replace(/^https?:\/\//, '');
+  const vSuffix = leg === 'return' ? '&v=retour' : '';
+  return `/?log=${encodeURIComponent(logId)}${vSuffix}`;
 }

@@ -1,6 +1,6 @@
 import { FlightPlan, NavLeg, Waypoint } from '../types';
 import { FRENCH_AERODROMES } from '../data/aerodromes';
-import { fetchAerodromeDetails } from './openaip';
+import { fetchAerodromeDetails, fetchSunTimes } from './openaip';
 import { calculateNavLegValues } from '../lib/navCalc';
 
 export interface GpxRawPoint {
@@ -166,6 +166,44 @@ export async function importGpxToFlightPlan(
   const pn = points[points.length - 1];
   const destination = await buildWaypointFromGpx(pn, `dest-${Date.now()}`, openAipApiKey);
 
+  // Récupération des éphémérides (lever / coucher de soleil) pour l'aérodrome d'arrivée et de départ
+  const flightDate = currentFlightPlan.flightDate || new Date().toISOString().split('T')[0];
+  if (destination.lat !== undefined && destination.lng !== undefined) {
+    try {
+      const destSunTimes = await fetchSunTimes(destination.lat, destination.lng, flightDate);
+      if (destSunTimes) {
+        destination.sunriseLocal = destSunTimes.sunriseLocal;
+        destination.sunriseUtc = destSunTimes.sunriseUtc;
+        destination.sunsetLocal = destSunTimes.sunsetLocal;
+        destination.sunsetUtc = destSunTimes.sunsetUtc;
+        destination.vfrDayStartLocal = destSunTimes.vfrDayStartLocal;
+        destination.vfrDayStartUtc = destSunTimes.vfrDayStartUtc;
+        destination.vfrDayEndLocal = destSunTimes.vfrDayEndLocal;
+        destination.vfrDayEndUtc = destSunTimes.vfrDayEndUtc;
+      }
+    } catch (err) {
+      console.warn('Erreur éphémérides GPX destination:', err);
+    }
+  }
+
+  if (departure.lat !== undefined && departure.lng !== undefined) {
+    try {
+      const depSunTimes = await fetchSunTimes(departure.lat, departure.lng, flightDate);
+      if (depSunTimes) {
+        departure.sunriseLocal = depSunTimes.sunriseLocal;
+        departure.sunriseUtc = depSunTimes.sunriseUtc;
+        departure.sunsetLocal = depSunTimes.sunsetLocal;
+        departure.sunsetUtc = depSunTimes.sunsetUtc;
+        departure.vfrDayStartLocal = depSunTimes.vfrDayStartLocal;
+        departure.vfrDayStartUtc = depSunTimes.vfrDayStartUtc;
+        departure.vfrDayEndLocal = depSunTimes.vfrDayEndLocal;
+        departure.vfrDayEndUtc = depSunTimes.vfrDayEndUtc;
+      }
+    } catch (err) {
+      console.warn('Erreur éphémérides GPX départ:', err);
+    }
+  }
+
   // P1 à P(n-1) = waypoints
   const waypoints: Waypoint[] = [];
   for (let i = 1; i < points.length - 1; i++) {
@@ -212,6 +250,8 @@ export async function importGpxToFlightPlan(
     destination,
     waypoints,
     legs,
+    destinationSunriseLocal: destination.sunriseLocal || '',
+    destinationSunsetLocal: destination.sunsetLocal || '',
     // Totaux laissés au pilote
     totalDistOverride: '',
     totalEteOverride: '',

@@ -23,6 +23,7 @@ interface LogTableA5Props {
   onUpdateLeg?: (index: number, field: keyof NavLeg, value: string) => void;
   onUpdateDepartureNotes?: (notes: string) => void;
   onUpdateDestinationTableNotes?: (notes: string) => void;
+  destinationSunsetLocal?: string;
   // Specific segments when paginating
   segments?: LogTableSegment[];
   showDestination?: boolean;
@@ -33,6 +34,7 @@ interface LogTableA5Props {
 export const LogTableA5: React.FC<LogTableA5Props> = ({
   departure,
   destination,
+  destinationSunsetLocal,
   waypoints = [],
   legs = [],
   isPrintMode = false,
@@ -79,8 +81,7 @@ export const LogTableA5: React.FC<LogTableA5Props> = ({
     );
   }, [departure.name, departure.oaci]);
 
-
-const destFreqs = {
+  const destFreqs = {
     atis: destination.frequencies?.atis || destAero?.frequencies?.atis || '',
     twr: destination.frequencies?.twr || destAero?.frequencies?.twr || '',
     gnd: destination.frequencies?.gnd || destAero?.frequencies?.gnd || '',
@@ -434,10 +435,10 @@ const destFreqs = {
                     </svg>
                     {isPrintMode ? (
                       <>
-                        <div className="text-left font-mono font-bold text-[9px] pl-0.5 pt-0.5 leading-none z-1">
+                        <div className="text-left font-mono font-bold text-[10px] pl-0.5 pt-0.5 leading-none z-1">
                           {leg.tSansVw || leg.ete || leg.temps || ''}
                         </div>
-                        <div className="text-right font-mono font-bold text-[9px] pr-0.5 pb-0.5 leading-none z-1">
+                        <div className="text-right font-mono font-bold text-[10px] pr-0.5 pb-0.5 leading-none z-1">
                           {leg.tAvecVw || ''}
                         </div>
                       </>
@@ -450,7 +451,7 @@ const destFreqs = {
                             value={leg.tSansVw ?? leg.ete ?? leg.temps ?? ''}
                             onChange={(e) => onUpdateLeg?.(legIndex, 'tSansVw', e.target.value)}
                             placeholder=""
-                            className="w-1/2 text-left font-mono font-bold text-[8.5px] p-0 border-0 focus:ring-1 focus:ring-black rounded bg-transparent leading-none"
+                            className="w-1/2 text-left font-mono font-bold text-[9.5px] p-0 border-0 focus:ring-1 focus:ring-black rounded bg-transparent leading-none"
                             title="T sans Vw"
                           />
                         </div>
@@ -461,7 +462,7 @@ const destFreqs = {
                             value={leg.tAvecVw || ''}
                             onChange={(e) => onUpdateLeg?.(legIndex, 'tAvecVw', e.target.value)}
                             placeholder=""
-                            className="w-1/2 text-right font-mono font-bold text-[8.5px] p-0 border-0 focus:ring-1 focus:ring-black rounded bg-transparent leading-none"
+                            className="w-1/2 text-right font-mono font-bold text-[9.5px] p-0 border-0 focus:ring-1 focus:ring-black rounded bg-transparent leading-none"
                             title="T avec Vw"
                           />
                         </div>
@@ -552,13 +553,11 @@ const destFreqs = {
                 Arrivée :
               </span>
               <span className="font-bold text-[11px] uppercase text-slate-900">
-                {destination.name || (isPrintMode ? (
-                  '__________________________'
-                ) : (
+                {destination.name || (
                   <span className="text-slate-400 italic font-normal text-[10px]">
-                    (Point d'arrivée laissé libre)
+                    Non défini
                   </span>
-                ))}
+                )}
               </span>
             </div>
 
@@ -607,7 +606,7 @@ const destFreqs = {
             <div className="flex items-center gap-1.5 font-mono text-[9.5px] font-bold text-black leading-tight">
               <Sunset className="w-3.5 h-3.5 text-black shrink-0 stroke-[2.2]" />
               <span>
-                Coucher soleil : {destination.sunsetLocal || '___'}
+                Coucher soleil : {destination.sunsetLocal || destinationSunsetLocal || '___'}
               </span>
             </div>
 

@@ -201,6 +201,11 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
 
   // Conversions et pourcentages pour les pistes dégradées
   const vpKmh = Number.isFinite(parsedVp) && parsedVp > 0 ? Math.round(parsedVp * KM_PER_NM) : null;
+  const distKm = Number.isFinite(parsedDist) && parsedDist >= 0
+    ? parsedDist % 1 !== 0
+      ? (parsedDist * KM_PER_NM).toFixed(1)
+      : Math.round(parsedDist * KM_PER_NM)
+    : null;
   const vpPercent = Math.min(100, Math.max(0, ((sliderVp - 60) / (150 - 60)) * 100));
   const distPercent = Math.min(100, Math.max(0, (sliderDist / 50) * 100));
   const windPercent = Math.min(100, Math.max(0, (sliderWindSpeed / 55) * 100));
@@ -290,9 +295,9 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
   }
 
   return (
-    <div className="no-print absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 top-0 sm:top-full sm:mt-2 w-[min(96vw,34rem)] max-h-[calc(100dvh-75px)] sm:max-h-[92vh] overflow-y-auto bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 p-3 sm:p-4 text-left">
-      {/* ZONE FIGÉE / STICKY EN HAUT (Sur mobile : Reset/Croix + Les 4 résultats restent fixes quand on scroll) */}
-      <div className="sticky top-0 z-20 bg-neutral-900 -mx-3 sm:mx-0 px-3 sm:px-0 -mt-3 sm:mt-0 pt-3 sm:pt-0 pb-2.5 border-b border-neutral-800/80 sm:border-b-0">
+    <div className="no-print fixed sm:absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 top-2 sm:top-full sm:mt-2 w-[min(96vw,34rem)] max-h-[calc(100dvh-20px)] sm:max-h-[92vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-2xl shadow-2xl z-50 text-left overflow-hidden">
+      {/* ZONE FIGÉE / EN-TÊTE FIXE (100% opaque noir, immobile en haut : titre mobile + boutons + 4 résultats) */}
+      <div className="shrink-0 bg-neutral-900 px-3 sm:px-4 pt-2.5 sm:pt-3.5 pb-2.5 border-b border-neutral-800 z-20">
         {/* Message d'erreur éventuel */}
         {res.error && (
           <div className="mb-2 px-3 py-2 bg-amber-500/10 border border-amber-500/40 rounded-lg text-xs text-amber-300">
@@ -300,8 +305,8 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
           </div>
         )}
 
-        {/* Barre d'en-tête mobile : boutons Reset et Croix AU-DESSUS de la box magenta résultats */}
-        <div className="flex sm:hidden items-center justify-between gap-2 mb-2 pb-0.5">
+        {/* Barre d'en-tête mobile : titre + boutons Info, Reset, Fermer remontés tout en haut */}
+        <div className="flex sm:hidden items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 text-neutral-300 min-w-0">
             <button
               type="button"
@@ -339,7 +344,7 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
           </div>
         </div>
 
-        {/* 1. LES QUATRE RÉSULTATS (Box magenta de la capture : T SANS VENT, T AVEC VENT, CAP À TENIR, VITESSE SOL) */}
+        {/* 1. LES QUATRE RÉSULTATS (T SANS VENT, T AVEC VENT, CAP À TENIR, VITESSE SOL) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="flex flex-col gap-0.5 px-3 py-1.5 sm:py-2 rounded-lg border bg-neutral-800 border-neutral-700">
             <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
@@ -379,59 +384,63 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
         </div>
       </div>
 
-      {/* CORPS DÉFILANT : NOTE D'AVERTISSEMENT (qui disparaît sous les résultats au scroll) */}
-      <div className="flex items-center justify-between gap-2.5 my-2.5 px-0.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <button
-            type="button"
-            id="wind-calc-info-btn"
-            onClick={() => setShowInfo(true)}
-            className="hidden sm:flex shrink-0 w-7 h-7 items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white hover:border-neutral-400 transition-colors cursor-pointer"
-            title="Détail des calculs et formules"
-          >
-            <Info className="w-3.5 h-3.5" />
-          </button>
-          <div className="text-[11px] leading-snug">
-            <p className="text-neutral-300">
-              Aucune valeur n'est reportée automatiquement dans le log.
-            </p>
-            <p className="text-red-400 font-medium">
-              Vous êtes responsable de les inscrire en les ayant vérifiées.
-            </p>
+      {/* CORPS DÉFILANT : AVERTISSEMENT, NOTE, PARAMÈTRES VP, ROSE DES VENTS, VENT */}
+      <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-2.5">
+        {/* NOTE D'AVERTISSEMENT */}
+        <div className="flex items-center justify-between gap-2.5 my-2 px-0.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              id="wind-calc-info-btn"
+              onClick={() => setShowInfo(true)}
+              className="hidden sm:flex shrink-0 w-7 h-7 items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-white hover:border-neutral-400 transition-colors cursor-pointer"
+              title="Détail des calculs et formules"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+            <div className="text-[11px] leading-snug">
+              <p className="text-neutral-300">
+                Aucune valeur n'est reportée automatiquement dans le log.
+              </p>
+              <p className="text-red-400 font-medium">
+                Vous êtes responsable de les inscrire en les ayant vérifiées.
+              </p>
+            </div>
+          </div>
+
+          {/* Boutons Reset & Fermer tout à droite (Affichés sur desktop ici) */}
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              id="wind-calc-reset-btn"
+              onClick={reset}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-white hover:bg-neutral-700 hover:border-neutral-400 transition-colors cursor-pointer"
+              title="Réinitialiser les valeurs par défaut"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              id="wind-calc-close-btn"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-white hover:bg-neutral-700 hover:border-neutral-400 transition-colors cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
-
-        {/* Boutons Reset & Fermer tout à droite (Affichés uniquement sur desktop ici, car sur mobile ils sont au-dessus des résultats) */}
-        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            id="wind-calc-reset-btn"
-            onClick={reset}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-white hover:bg-neutral-700 hover:border-neutral-400 transition-colors cursor-pointer"
-            title="Réinitialiser les valeurs par défaut"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            id="wind-calc-close-btn"
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-white hover:bg-neutral-700 hover:border-neutral-400 transition-colors cursor-pointer"
-            title="Fermer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
 
       {/* TRAIT GRIS FIN DE SÉPARATION DE LA ZONE DE PARAMÉTRAGE DES VALEURS */}
       <div className="border-b border-neutral-700/60 my-2.5" />
 
       {/* 2. ZONE DE PARAMÉTRAGE VP : même charte, même taille de texte que RM et vent */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 bg-neutral-800/40 p-2.5 rounded-xl border border-neutral-800 mb-2.5">
-        {/* Box de valeur VP : VP en haut à gauche, km/h en haut à droite, champ de valeur en-dessous avec KT */}
-        <div className="flex flex-col gap-0.5 shrink-0">
-          <div className="flex items-center justify-between w-full pr-0.5">
+        {/* Box de valeur VP :
+            Desktop : En haut à gauche "VP", en haut à droite conversion (km/h), unité "kt" à droite de la box
+            Mobile : "VP" à gauche de la box, puis unité "kt", puis conversion (km/h) */}
+        <div className="flex flex-row sm:flex-col items-center sm:items-stretch gap-1.5 sm:gap-0.5 shrink-0">
+          <div className="hidden sm:flex items-center justify-between w-full pr-0.5">
             <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
               VP
             </span>
@@ -439,19 +448,28 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
               {vpKmh !== null ? `${vpKmh} km/h` : 'km/h'}
             </span>
           </div>
+
           <div className="flex items-center gap-1.5">
+            <span className="sm:hidden text-[10px] font-semibold text-neutral-400 uppercase tracking-wider shrink-0">
+              VP
+            </span>
             <input
               type="text"
               inputMode="numeric"
               value={vp}
               onChange={(e) => setVp(e.target.value)}
               placeholder="80"
-              className="w-20 px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-amber-500 focus:outline-none"
+              className="w-16 sm:w-20 px-1.5 sm:px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-base sm:text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-amber-500 focus:outline-none"
               title="Vitesse propre (30 à 250 kt)"
             />
-            <span className="text-xs font-bold text-neutral-300">
+            <span className="text-xs font-bold text-neutral-300 shrink-0">
               kt
             </span>
+            {vpKmh !== null && (
+              <span className="sm:hidden text-[10px] font-semibold text-neutral-400 font-mono shrink-0">
+                {vpKmh} km/h
+              </span>
+            )}
           </div>
         </div>
 
@@ -490,36 +508,68 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
 
       {/* 2. AU-DESSUS DE LA ROSE : Box RM & Dist à gauche, slider Distance branche à droite */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 bg-neutral-800/40 p-2.5 rounded-xl border border-neutral-800 mb-1">
-        {/* Box RM et Box Dist */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Box RM et Box Dist :
+            Desktop : En haut à gauche nom, en haut à droite conversion (uniquement Dist en km), unités à droite de la box
+            Mobile : Nom à gauche de la box, puis unité, puis conversion (Dist en km) */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-2.5 shrink-0">
           {/* Box RM */}
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
-              RM (°)
-            </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={rm}
-              onChange={(e) => setRm(e.target.value)}
-              placeholder="315"
-              className="w-20 px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-amber-500 focus:outline-none"
-            />
+          <div className="flex flex-row sm:flex-col items-center sm:items-stretch gap-1.5 sm:gap-0.5 shrink-0">
+            <div className="hidden sm:flex items-center justify-between w-full pr-0.5">
+              <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
+                RM
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="sm:hidden text-[10px] font-semibold text-neutral-400 uppercase tracking-wider shrink-0">
+                RM
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={rm}
+                onChange={(e) => setRm(e.target.value)}
+                placeholder="315"
+                className="w-16 sm:w-20 px-1.5 sm:px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-base sm:text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-amber-500 focus:outline-none"
+              />
+              <span className="text-xs font-bold text-neutral-300 shrink-0">
+                (°)
+              </span>
+            </div>
           </div>
 
           {/* Box Dist */}
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
-              Dist (NM)
-            </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={distNm}
-              onChange={(e) => setDistNm(e.target.value)}
-              placeholder="10"
-              className="w-20 px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-amber-500 focus:outline-none"
-            />
+          <div className="flex flex-row sm:flex-col items-center sm:items-stretch gap-1.5 sm:gap-0.5 shrink-0">
+            <div className="hidden sm:flex items-center justify-between w-full pr-0.5">
+              <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
+                DIST
+              </span>
+              <span className="text-[9px] font-semibold text-neutral-400 font-mono">
+                {distKm !== null ? `${distKm} km` : 'km'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="sm:hidden text-[10px] font-semibold text-neutral-400 uppercase tracking-wider shrink-0">
+                DIST
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={distNm}
+                onChange={(e) => setDistNm(e.target.value)}
+                placeholder="10"
+                className="w-16 sm:w-20 px-1.5 sm:px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-base sm:text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-amber-500 focus:outline-none"
+              />
+              <span className="text-xs font-bold text-neutral-300 shrink-0">
+                NM
+              </span>
+              {distKm !== null && (
+                <span className="sm:hidden text-[10px] font-semibold text-neutral-400 font-mono shrink-0">
+                  {distKm} km
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -557,210 +607,211 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
       </div>
 
       {/* 3. SCHÉMA CIRCULAIRE : Rose des vents interactive */}
-      <div className="relative my-0.5 flex items-center justify-center select-none touch-none">
+      <div
+        className="relative my-0.5 flex items-center justify-center select-none touch-pan-y"
+        style={{ touchAction: 'pan-y' }}
+      >
         <svg
           ref={svgRef}
           viewBox="0 0 300 300"
           className="w-full max-w-[280px] sm:max-w-[300px] aspect-square overflow-visible"
-          style={{ touchAction: 'none' }}
+          style={{ touchAction: 'pan-y' }}
         >
-          <defs>
-            <filter id="btn-shadow" x="-30%" y="-30%" width="160%" height="160%">
-              <feDropShadow dx="0" dy="1.5" stdDeviation="2" floodOpacity="0.45" />
-            </filter>
-          </defs>
+          {/* ÉLÉMENTS GRAPHIQUES NON-INTERACTIFS : les clics/touchers passent au travers (pointer-events: none)
+              pour permettre un défilement / scroll vertical fluide sur mobile sur toutes les zones sombres */}
+          <g pointerEvents="none">
+            {/* Cercle plein des caps d'avant avec fond sombre et contour */}
+            <circle
+              cx={cx}
+              cy={cy}
+              r={R}
+              fill="#171717"
+              stroke="#404040"
+              strokeWidth="1.5"
+            />
 
-          {/* Cercle plein des caps d'avant avec fond sombre et contour */}
-          <circle
-            cx={cx}
-            cy={cy}
-            r={R}
-            fill="#171717"
-            stroke="#404040"
-            strokeWidth="1.5"
-          />
+            {/* Graduations tous les 30° avec cardinaux plus marqués */}
+            {Array.from({ length: 12 }).map((_, i) => {
+              const deg = i * 30;
+              const isMajor = deg % 90 === 0;
+              const len = isMajor ? 8 : 5;
+              return (
+                <line
+                  key={deg}
+                  x1={cx}
+                  y1={cy - R}
+                  x2={cx}
+                  y2={cy - R + len}
+                  stroke={isMajor ? '#a3a3a3' : '#525252'}
+                  strokeWidth={isMajor ? 1.5 : 1}
+                  transform={`rotate(${deg} ${cx} ${cy})`}
+                />
+              );
+            })}
 
-          {/* Graduations tous les 30° avec cardinaux plus marqués */}
-          {Array.from({ length: 12 }).map((_, i) => {
-            const deg = i * 30;
-            const isMajor = deg % 90 === 0;
-            const len = isMajor ? 8 : 5;
-            return (
-              <line
-                key={deg}
-                x1={cx}
-                y1={cy - R}
-                x2={cx}
-                y2={cy - R + len}
-                stroke={isMajor ? '#a3a3a3' : '#525252'}
-                strokeWidth={isMajor ? 1.5 : 1}
-                transform={`rotate(${deg} ${cx} ${cy})`}
+            {/* Repères cardinaux 0, 90, 180, 270 */}
+            <text
+              x={cx}
+              y={cy - R - 10}
+              fill="#e5e5e5"
+              fontSize="12"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              0
+            </text>
+            <text
+              x={cx + R + 14}
+              y={cy + 4.5}
+              fill="#e5e5e5"
+              fontSize="12"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              90
+            </text>
+            <text
+              x={cx}
+              y={cy + R + 18}
+              fill="#e5e5e5"
+              fontSize="12"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              180
+            </text>
+            <text
+              x={cx - R - 15}
+              y={cy + 4.5}
+              fill="#e5e5e5"
+              fontSize="12"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              270
+            </text>
+
+            {/* AXE DU VENT : pointillé puis barbule (valeurs inversées) puis pointillé jusqu'au bouton V */}
+            <g transform={`rotate(${currentWindDir} ${cx} ${cy})`}>
+              {isCalmWind ? (
+                // Vent calme : petit cercle au centre + pointillés jusqu'au bouton
+                <>
+                  <circle cx={cx} cy={cy} r={7} fill="none" stroke="#38bdf8" strokeWidth="2" />
+                  <line
+                    x1={cx}
+                    y1={cy - 7}
+                    x2={cx}
+                    y2={cy - R_windButton + 12}
+                    stroke="#38bdf8"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                </>
+              ) : (
+                // Vent actif : pointillés depuis le centre -> barbule sur l'axe -> 3 pointillés jusqu'au bouton V éloigné
+                <>
+                  {/* 1. Pointillés du centre jusqu'à la barbule */}
+                  <line
+                    x1={cx}
+                    y1={cy}
+                    x2={cx}
+                    y2={barbShaftInnerY}
+                    stroke="#38bdf8"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                  {/* 2. Hampe continue de la barbule */}
+                  <line
+                    x1={cx}
+                    y1={barbShaftInnerY}
+                    x2={cx}
+                    y2={barbShaftOuterY}
+                    stroke="#38bdf8"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                  {/* Barbes météo orientées vers l'extérieur */}
+                  {barbElements}
+                  {/* 3. Exactement 3 pointillés nets reliant l'extrémité extérieure de la barbule à la bulle de vent */}
+                  <line x1={cx} y1={cy - 107} x2={cx} y2={cy - 110} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+                  <line x1={cx} y1={cy - 113} x2={cx} y2={cy - 116} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+                  <line x1={cx} y1={cy - 119} x2={cx} y2={cy - 122} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+                </>
+              )}
+            </g>
+
+            {/* AXE DE LA ROUTE MAGNÉTIQUE (RM) : Ligne en pointillés reliant l'avion au marqueur RM */}
+            <line
+              x1={cx}
+              y1={cy}
+              x2={rmBtnX}
+              y2={rmBtnY}
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity="0.85"
+            />
+
+            {/* SILHOUETTE D'AVION DE TOURISME À HÉLICE AU CENTRE (Gris #94A3B9) */}
+            <g transform={`translate(${cx}, ${cy}) rotate(${currentRm})`}>
+              {/* Hélice à l'avant (pales transversales) */}
+              <ellipse cx="0" cy="-24" rx="14" ry="1.2" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.6" />
+              {/* Casserole d'hélice / nez */}
+              <path d="M -2,-21 C -2,-25 0,-26 0,-26 C 0,-26 2,-25 2,-21 Z" fill="#94A3B9" stroke="#64748b" strokeWidth="0.8" />
+
+              {/* Ailes basses de tourisme (#94A3B9) */}
+              <path
+                d="M -30,1 C -30,-0.5 -29,-2 -27,-2 L -4,-4 L 4,-4 L 27,-2 C 29,-2 30,-0.5 30,1 L 29,4 C 29,5 27,5.5 25,5 L 4,4 L -4,4 L -25,5 C -27,5.5 -29,5 -29,4 Z"
+                fill="#94A3B9"
+                stroke="#64748b"
+                strokeWidth="1"
               />
-            );
-          })}
+              {/* Lignes volets/ailerons */}
+              <line x1="-26" y1="3.5" x2="-8" y2="3.5" stroke="#475569" strokeWidth="0.8" />
+              <line x1="8" y1="3.5" x2="26" y2="3.5" stroke="#475569" strokeWidth="0.8" />
 
-          {/* Repères cardinaux 0, 90, 180, 270 */}
-          <text
-            x={cx}
-            y={cy - R - 10}
-            fill="#e5e5e5"
-            fontSize="12"
-            fontWeight="bold"
-            fontFamily="monospace"
-            textAnchor="middle"
-          >
-            0
-          </text>
-          <text
-            x={cx + R + 14}
-            y={cy + 4.5}
-            fill="#e5e5e5"
-            fontSize="12"
-            fontWeight="bold"
-            fontFamily="monospace"
-            textAnchor="middle"
-          >
-            90
-          </text>
-          <text
-            x={cx}
-            y={cy + R + 18}
-            fill="#e5e5e5"
-            fontSize="12"
-            fontWeight="bold"
-            fontFamily="monospace"
-            textAnchor="middle"
-          >
-            180
-          </text>
-          <text
-            x={cx - R - 15}
-            y={cy + 4.5}
-            fill="#e5e5e5"
-            fontSize="12"
-            fontWeight="bold"
-            fontFamily="monospace"
-            textAnchor="middle"
-          >
-            270
-          </text>
+              {/* Empennage arrière horizontal (#94A3B9) */}
+              <path
+                d="M -12,18 C -12,17 -11,16 -9,16 L -1.5,16.5 L 1.5,16.5 L 9,16 C 11,16 12,17 12,18 L 11.5,20.5 C 11.5,21 10,21.5 8.5,21.5 L 1.5,21 L -1.5,21 L -8.5,21.5 C -10,21.5 -11.5,21 -11.5,20.5 Z"
+                fill="#94A3B9"
+                stroke="#64748b"
+                strokeWidth="1"
+              />
 
-          {/* AXE DU VENT : pointillé puis barbule (valeurs inversées) puis pointillé jusqu'au bouton V */}
-          <g transform={`rotate(${currentWindDir} ${cx} ${cy})`}>
-            {isCalmWind ? (
-              // Vent calme : petit cercle au centre + pointillés jusqu'au bouton
-              <>
-                <circle cx={cx} cy={cy} r={7} fill="none" stroke="#38bdf8" strokeWidth="2" />
-                <line
-                  x1={cx}
-                  y1={cy - 7}
-                  x2={cx}
-                  y2={cy - R_windButton + 12}
-                  stroke="#38bdf8"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                />
-              </>
-            ) : (
-              // Vent actif : pointillés depuis le centre -> barbule sur l'axe -> 3 pointillés jusqu'au bouton V éloigné
-              <>
-                {/* 1. Pointillés du centre jusqu'à la barbule */}
-                <line
-                  x1={cx}
-                  y1={cy}
-                  x2={cx}
-                  y2={barbShaftInnerY}
-                  stroke="#38bdf8"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                />
-                {/* 2. Hampe continue de la barbule */}
-                <line
-                  x1={cx}
-                  y1={barbShaftInnerY}
-                  x2={cx}
-                  y2={barbShaftOuterY}
-                  stroke="#38bdf8"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-                {/* Barbes météo orientées vers l'extérieur */}
-                {barbElements}
-                {/* 3. Exactement 3 pointillés nets reliant l'extrémité extérieure de la barbule à la bulle de vent */}
-                <line x1={cx} y1={cy - 107} x2={cx} y2={cy - 110} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-                <line x1={cx} y1={cy - 113} x2={cx} y2={cy - 116} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-                <line x1={cx} y1={cy - 119} x2={cx} y2={cy - 122} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-              </>
-            )}
+              {/* Fuselage profilé (#94A3B9) */}
+              <path
+                d="M 0,-22 C 3.5,-20 4.2,-14 4.5,-5 C 4.5,2 4.2,10 3,17 C 2.2,21.5 1.5,23.5 0,24.5 C -1.5,23.5 -2.2,21.5 -3,17 C -4.2,10 -4.5,2 -4.5,-5 C -4.2,-14 -3.5,-20 0,-22 Z"
+                fill="#94A3B9"
+                stroke="#64748b"
+                strokeWidth="1.2"
+              />
+
+              {/* Dérive centrale arrière */}
+              <path d="M -0.8,15 L 0.8,15 L 0.8,24 L -0.8,24 Z" fill="#64748b" />
+
+              {/* Cockpit / Verrière avec montants */}
+              <path
+                d="M 0,-15 C 2.5,-15 3.2,-12 3.2,-6 C 3.2,0 2.8,4 1.8,7 C 1.2,8.5 0.5,9.5 0,9.5 C -0.5,9.5 -1.2,8.5 -1.8,7 C -2.8,4 -3.2,0 -3.2,-6 C -3.2,-12 -2.5,-15 0,-15 Z"
+                fill="#f8fafc"
+                stroke="#64748b"
+                strokeWidth="0.8"
+              />
+              {/* Reflet verrière */}
+              <path
+                d="M 0,-13.5 C 1.6,-13.5 2.2,-11 2.2,-6 C 2.2,-1 1.8,2 1.2,4.5 C 0.8,5.5 0.3,6.2 0,6.2 Z"
+                fill="#ffffff"
+                opacity="0.9"
+              />
+              {/* Montant cockpit */}
+              <line x1="-3" y1="-4" x2="3" y2="-4" stroke="#64748b" strokeWidth="1" />
+            </g>
           </g>
 
-          {/* AXE DE LA ROUTE MAGNÉTIQUE (RM) : Ligne en pointillés reliant l'avion au marqueur RM */}
-          <line
-            x1={cx}
-            y1={cy}
-            x2={rmBtnX}
-            y2={rmBtnY}
-            stroke="#f59e0b"
-            strokeWidth="1.5"
-            strokeDasharray="3 3"
-            opacity="0.85"
-          />
-
-          {/* SILHOUETTE D'AVION DE TOURISME À HÉLICE AU CENTRE (Gris #94A3B9) */}
-          <g transform={`translate(${cx}, ${cy}) rotate(${currentRm})`}>
-            {/* Hélice à l'avant (pales transversales) */}
-            <ellipse cx="0" cy="-24" rx="14" ry="1.2" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.6" />
-            {/* Casserole d'hélice / nez */}
-            <path d="M -2,-21 C -2,-25 0,-26 0,-26 C 0,-26 2,-25 2,-21 Z" fill="#94A3B9" stroke="#64748b" strokeWidth="0.8" />
-
-            {/* Ailes basses de tourisme (#94A3B9) */}
-            <path
-              d="M -30,1 C -30,-0.5 -29,-2 -27,-2 L -4,-4 L 4,-4 L 27,-2 C 29,-2 30,-0.5 30,1 L 29,4 C 29,5 27,5.5 25,5 L 4,4 L -4,4 L -25,5 C -27,5.5 -29,5 -29,4 Z"
-              fill="#94A3B9"
-              stroke="#64748b"
-              strokeWidth="1"
-            />
-            {/* Lignes volets/ailerons */}
-            <line x1="-26" y1="3.5" x2="-8" y2="3.5" stroke="#475569" strokeWidth="0.8" />
-            <line x1="8" y1="3.5" x2="26" y2="3.5" stroke="#475569" strokeWidth="0.8" />
-
-            {/* Empennage arrière horizontal (#94A3B9) */}
-            <path
-              d="M -12,18 C -12,17 -11,16 -9,16 L -1.5,16.5 L 1.5,16.5 L 9,16 C 11,16 12,17 12,18 L 11.5,20.5 C 11.5,21 10,21.5 8.5,21.5 L 1.5,21 L -1.5,21 L -8.5,21.5 C -10,21.5 -11.5,21 -11.5,20.5 Z"
-              fill="#94A3B9"
-              stroke="#64748b"
-              strokeWidth="1"
-            />
-
-            {/* Fuselage profilé (#94A3B9) */}
-            <path
-              d="M 0,-22 C 3.5,-20 4.2,-14 4.5,-5 C 4.5,2 4.2,10 3,17 C 2.2,21.5 1.5,23.5 0,24.5 C -1.5,23.5 -2.2,21.5 -3,17 C -4.2,10 -4.5,2 -4.5,-5 C -4.2,-14 -3.5,-20 0,-22 Z"
-              fill="#94A3B9"
-              stroke="#64748b"
-              strokeWidth="1.2"
-            />
-
-            {/* Dérive centrale arrière */}
-            <path d="M -0.8,15 L 0.8,15 L 0.8,24 L -0.8,24 Z" fill="#64748b" />
-
-            {/* Cockpit / Verrière avec montants */}
-            <path
-              d="M 0,-15 C 2.5,-15 3.2,-12 3.2,-6 C 3.2,0 2.8,4 1.8,7 C 1.2,8.5 0.5,9.5 0,9.5 C -0.5,9.5 -1.2,8.5 -1.8,7 C -2.8,4 -3.2,0 -3.2,-6 C -3.2,-12 -2.5,-15 0,-15 Z"
-              fill="#f8fafc"
-              stroke="#64748b"
-              strokeWidth="0.8"
-            />
-            {/* Reflet verrière */}
-            <path
-              d="M 0,-13.5 C 1.6,-13.5 2.2,-11 2.2,-6 C 2.2,-1 1.8,2 1.2,4.5 C 0.8,5.5 0.3,6.2 0,6.2 Z"
-              fill="#ffffff"
-              opacity="0.9"
-            />
-            {/* Montant cockpit */}
-            <line x1="-3" y1="-4" x2="3" y2="-4" stroke="#64748b" strokeWidth="1" />
-          </g>
-
-          {/* MARQUEUR BULLE RM AVION (Bulle ambre circulaire comme avant, synchronisation instantanée) */}
+          {/* MARQUEUR BULLE RM AVION (Bulle orange visible partout, touchAction: none pour tourner l'avion sans scroller) */}
           <g
             tabIndex={0}
             role="slider"
@@ -776,19 +827,28 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
             onKeyDown={handleKeyDownRm}
             className="cursor-grab active:cursor-grabbing outline-none"
             style={{ touchAction: 'none' }}
+            pointerEvents="auto"
           >
-            {/* Zone de capture transparente élargie */}
-            <circle cx={rmBtnX} cy={rmBtnY} r={22} fill="transparent" />
+            {/* Zone de capture transparente élargie (48px de diamètre) */}
+            <circle cx={rmBtnX} cy={rmBtnY} r={24} fill="transparent" pointerEvents="auto" />
 
-            {/* Bulle circulaire ambre comme avant */}
+            {/* Ombre portée SVG native (rendu garanti sur mobile sans filtre SVG) */}
+            <circle
+              cx={rmBtnX}
+              cy={rmBtnY + 1.5}
+              r={13}
+              fill="#000000"
+              opacity="0.45"
+            />
+
+            {/* Bulle circulaire orange RM bien visible */}
             <circle
               cx={rmBtnX}
               cy={rmBtnY}
-              r={12.5}
+              r={13}
               fill="#d97706"
               stroke="#fbbf24"
               strokeWidth="2"
-              filter="url(#btn-shadow)"
             />
 
             {/* Texte RM centré dans la bulle sur une ligne */}
@@ -807,7 +867,7 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
             </text>
           </g>
 
-          {/* MARQUEUR BOUTON V POUR ORIENTER LE VENT (Cercle comme avant) */}
+          {/* MARQUEUR BOUTON V POUR ORIENTER LE VENT (Bulle bleue visible partout, touchAction: none pour tourner le vent sans scroller) */}
           <g
             tabIndex={0}
             role="slider"
@@ -823,20 +883,30 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
             onKeyDown={handleKeyDownWind}
             className="cursor-grab active:cursor-grabbing outline-none"
             style={{ touchAction: 'none' }}
+            pointerEvents="auto"
           >
-            {/* Zone de capture transparente */}
-            <circle cx={windBtnX} cy={windBtnY} r={22} fill="transparent" />
+            {/* Zone de capture transparente élargie (48px de diamètre) */}
+            <circle cx={windBtnX} cy={windBtnY} r={24} fill="transparent" pointerEvents="auto" />
 
-            {/* Cercle d'orientation du vent comme avant */}
+            {/* Ombre portée SVG native */}
+            <circle
+              cx={windBtnX}
+              cy={windBtnY + 1.5}
+              r={12.5}
+              fill="#000000"
+              opacity="0.45"
+            />
+
+            {/* Bulle circulaire bleue d'orientation du vent bien visible */}
             <circle
               cx={windBtnX}
               cy={windBtnY}
-              r={12}
+              r={12.5}
               fill="#0284c7"
               stroke="#38bdf8"
               strokeWidth="2"
-              filter="url(#btn-shadow)"
             />
+
             {/* Lettre V au centre du cercle */}
             <text
               x={windBtnX}
@@ -856,36 +926,60 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
 
       {/* 4. EN-DESSOUS DE LA ROSE : Box Vent du & Vit. vent à gauche, slider Vitesse vent à droite */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 bg-neutral-800/40 p-2.5 rounded-xl border border-neutral-800 mb-3">
-        {/* Box Vent du et Box Vit. vent */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Box Vent du et Box Vit. vent :
+            Desktop : En haut à gauche nom, pas de conversion, unités à droite de la box
+            Mobile : Nom à gauche de la box, puis unité, pas de conversion */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-2.5 shrink-0">
           {/* Box Vent du */}
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
-              Vent du (°)
-            </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={windDir}
-              onChange={(e) => setWindDir(e.target.value)}
-              placeholder="0"
-              className="w-20 px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-cyan-500 focus:outline-none"
-            />
+          <div className="flex flex-row sm:flex-col items-center sm:items-stretch gap-1.5 sm:gap-0.5 shrink-0">
+            <div className="hidden sm:flex items-center justify-between w-full pr-0.5">
+              <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
+                VENT DU
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="sm:hidden text-[10px] font-semibold text-neutral-400 uppercase tracking-wider shrink-0">
+                VENT DU
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={windDir}
+                onChange={(e) => setWindDir(e.target.value)}
+                placeholder="0"
+                className="w-16 sm:w-20 px-1.5 sm:px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-base sm:text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+              />
+              <span className="text-xs font-bold text-neutral-300 shrink-0">
+                (°)
+              </span>
+            </div>
           </div>
 
           {/* Box Vit. vent */}
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
-              Vit. vent (kt)
-            </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={windSpeed}
-              onChange={(e) => setWindSpeed(e.target.value)}
-              placeholder="0"
-              className="w-20 px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-cyan-500 focus:outline-none"
-            />
+          <div className="flex flex-row sm:flex-col items-center sm:items-stretch gap-1.5 sm:gap-0.5 shrink-0">
+            <div className="hidden sm:flex items-center justify-between w-full pr-0.5">
+              <span className="text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
+                VIT. VENT
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="sm:hidden text-[10px] font-semibold text-neutral-400 uppercase tracking-wider shrink-0">
+                VIT. VENT
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={windSpeed}
+                onChange={(e) => setWindSpeed(e.target.value)}
+                placeholder="0"
+                className="w-16 sm:w-20 px-1.5 sm:px-2 py-1 bg-neutral-900 border border-neutral-700 rounded-lg text-base sm:text-sm font-mono font-bold text-white text-center focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+              />
+              <span className="text-xs font-bold text-neutral-300 shrink-0">
+                kt
+              </span>
+            </div>
           </div>
         </div>
 
@@ -925,8 +1019,9 @@ export const WindCalculator: React.FC<WindCalculatorProps> = ({
 
       {/* Espace de sécurité en bas pour que le slider de vent soit toujours 100% accessible au doigt sur mobile */}
       <div className="h-8 sm:h-2" />
+    </div>
 
-      {/* POPUP MODALE : Détail des calculs et formules mathématiques / aéronautiques */}
+    {/* POPUP MODALE : Détail des calculs et formules mathématiques / aéronautiques */}
       {showInfo && (
         <div
           className="fixed inset-0 z-[100] bg-black/75 flex items-center justify-center p-4 backdrop-blur-xs"

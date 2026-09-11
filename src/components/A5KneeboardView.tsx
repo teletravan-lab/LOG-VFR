@@ -49,43 +49,26 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
         !flightPlan.aircraftModel &&
         !flightPlan.flightDate));
 
-  // Calculations
+  // Calculations : Dist Tot et ETE Tot sont saisis manuellement par le pilote en haut
   const parseNum = (val?: string) => {
     if (!val) return 0;
     const n = parseFloat(val);
     return isNaN(n) ? 0 : n;
   };
 
-  const totalDist = flightPlan.legs.reduce((acc, leg) => acc + parseNum(leg.dist), 0);
-  const totalEteMin = flightPlan.legs.reduce(
-    (acc, leg) => acc + parseNum(leg.ete || leg.temps),
-    0
-  );
+  const displayDist = flightPlan.totalDistOverride || '';
+  const displayEte = flightPlan.totalEteOverride || '';
 
-  // Total Trip fuel
-  const flightConso = Math.round(((totalEteMin / 60) * flightPlan.fuelPerHour) * 10) / 10;
+  const manualEteMin = parseNum(displayEte);
+  const flightConso = Math.round(((manualEteMin / 60) * flightPlan.fuelPerHour) * 10) / 10;
   const taxiConso = flightPlan.taxiFuel || 3;
-  const totalConsoLiters = Math.round((flightConso + taxiConso) * 10) / 10;
-
-  const displayDist =
-    flightPlan.totalDistOverride !== undefined && flightPlan.totalDistOverride !== ''
-      ? flightPlan.totalDistOverride
-      : totalDist > 0
-      ? `${totalDist}`
-      : '';
-
-  const displayEte =
-    flightPlan.totalEteOverride !== undefined && flightPlan.totalEteOverride !== ''
-      ? flightPlan.totalEteOverride
-      : totalEteMin > 0
-      ? `${totalEteMin}`
-      : '';
+  const manualConsoLiters = manualEteMin > 0 && flightPlan.fuelPerHour > 0 ? Math.round((flightConso + taxiConso) * 10) / 10 : 0;
 
   const displayConso =
     flightPlan.totalConsoOverride !== undefined && flightPlan.totalConsoOverride !== ''
       ? flightPlan.totalConsoOverride
-      : totalEteMin > 0
-      ? `${totalConsoLiters}`
+      : manualConsoLiters > 0
+      ? `${manualConsoLiters}`
       : '';
 
   // Format OACI codes for Header (support up to 6 characters, e.g. LF7821, LF2752, LFPX => LFOO)
@@ -468,6 +451,7 @@ export const A5KneeboardView: React.FC<A5KneeboardViewProps> = ({
             <LogTableA5
               departure={flightPlan.departure}
               destination={flightPlan.destination}
+              destinationSunsetLocal={flightPlan.destination.sunsetLocal || flightPlan.destinationSunsetLocal}
               waypoints={flightPlan.waypoints}
               legs={flightPlan.legs}
               isPrintMode={isPrintMode}

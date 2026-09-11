@@ -23,6 +23,7 @@ import { AerodromeSearchInput } from './AerodromeSearchInput';
 import { fetchArrivalAirportData, fetchSunTimes } from '../services/openaip';
 import { AerodromeIndexEntry, FRENCH_AERODROMES } from '../data/aerodromes';
 import { truncateWpName, truncateDepartureName } from '../lib/formatters';
+import { getAirfieldVacLink, resolveAirfieldVac } from '../services/sia';
 
 interface FlightPlanEditorProps {
   flightPlan: FlightPlan;
@@ -208,6 +209,23 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
           destinationSunriseLocal: instantSunTimes?.sunriseLocal,
           destinationSunsetLocal: instantSunTimes?.sunsetLocal,
         });
+      } else if (instantSunTimes) {
+        onChange({
+          ...flightPlan,
+          destination: {
+            ...flightPlan.destination,
+            sunriseUtc: instantSunTimes.sunriseUtc,
+            sunriseLocal: instantSunTimes.sunriseLocal,
+            sunsetUtc: instantSunTimes.sunsetUtc,
+            sunsetLocal: instantSunTimes.sunsetLocal,
+            vfrDayStartUtc: instantSunTimes.vfrDayStartUtc,
+            vfrDayStartLocal: instantSunTimes.vfrDayStartLocal,
+            vfrDayEndUtc: instantSunTimes.vfrDayEndUtc,
+            vfrDayEndLocal: instantSunTimes.vfrDayEndLocal,
+          },
+          destinationSunriseLocal: instantSunTimes.sunriseLocal,
+          destinationSunsetLocal: instantSunTimes.sunsetLocal,
+        });
       }
     } catch (err) {
       console.error('Error fetching arrival airport data:', err);
@@ -222,13 +240,27 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
     const destOpenAipId = flightPlan.destination.openAipId;
     const destOaci = flightPlan.destination.oaci || '';
     const destName = flightPlan.destination.name || '';
-    if ((destOpenAipId || destOaci || destName) && !flightPlan.destination.sunsetLocal) {
+    const destLat = flightPlan.destination.lat;
+    const destLng = flightPlan.destination.lng;
+    if (
+      (destOpenAipId || destOaci || destName || (destLat !== undefined && destLng !== undefined)) &&
+      !flightPlan.destination.sunsetLocal
+    ) {
       const local = destOpenAipId
         ? FRENCH_AERODROMES.find((a) => a.id === destOpenAipId)
         : FRENCH_AERODROMES.find((a) => a.oaci.toUpperCase() === destOaci.toUpperCase());
       triggerFetchArrivalData(destOaci || destName, local);
     }
-  }, [flightPlan.flightDate]);
+  }, [
+    flightPlan.flightDate,
+    flightPlan.destination.id,
+    flightPlan.destination.openAipId,
+    flightPlan.destination.oaci,
+    flightPlan.destination.name,
+    flightPlan.destination.lat,
+    flightPlan.destination.lng,
+    flightPlan.destination.sunsetLocal,
+  ]);
 
   // Destination Select: immediately update flight plan state for instant VAC refresh, then fetch OpenAIP
   const handleSelectDestination = (aero: AerodromeInfo) => {
@@ -402,8 +434,66 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
     });
   };
 
+  // Sanitize numeric inputs for legs (RM, DIST, ALT, T sans/avec Vw)
+  // Rejects negative values, letters, and symbols
+  const sanitizeLegValue = (field: keyof NavLeg, raw: string): string => {
+    if (field === 'notes') return raw;
+    if (field === 'rm') {
+      const digits = raw.replace(/[^0-9]/g, '');
+      if (!digits) return '';
+      const num = parseInt(digits, 10);
+      if (num > 360) return '360';
+      return digits;
+    }
+    if (field === 'alt') {
+      return raw.replace(/[^0-9]/g, '');
+    }
+    if (field === 'dist' || field === 'tSansVw' || field === 'tAvecVw' || field === 'ete' || field === 'temps') {
+      const clean = raw.replace(/[^0-9.]/g, '');
+      const parts = clean.split('.');
+      return parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : clean;
+    }
+    return raw;
+  };
+
+  // Keyboard filter to block negative '-', '+', and alphabetic characters on numeric inputs
+  const handleNumericKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, allowDecimal = false) => {
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'Escape' ||
+      e.key === 'Enter' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+
+    // Allow decimal separator (. or ,) if permitted and not already in input
+    if (allowDecimal && (e.key === '.' || e.key === ',')) {
+      if (!e.currentTarget.value.includes('.')) {
+        return;
+      }
+      e.preventDefault();
+      return;
+    }
+
+    // Block non-digits
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+    }
+  };
+
   // Change a leg field (alt, rm, dist, tSansVw, tAvecVw, eta, ata, notes)
   const handleLegChange = (index: number, field: keyof NavLeg, value: string) => {
+    const sanitizedValue = sanitizeLegValue(field, value.replace(',', '.'));
     const updatedLegs = [...flightPlan.legs];
     while (updatedLegs.length <= index) {
       updatedLegs.push({
@@ -424,9 +514,9 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
 
     updatedLegs[index] = {
       ...updatedLegs[index],
-      [field]: value,
-      ...(field === 'tSansVw' ? { ete: value, temps: value } : {}),
-      ...(field === 'ete' ? { tSansVw: value, temps: value } : {}),
+      [field]: sanitizedValue,
+      ...(field === 'tSansVw' ? { ete: sanitizedValue, temps: sanitizedValue } : {}),
+      ...(field === 'ete' ? { tSansVw: sanitizedValue, temps: sanitizedValue } : {}),
     };
 
     let updatedWaypoints = flightPlan.waypoints;
@@ -461,14 +551,11 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
     return isNaN(n) ? 0 : n;
   };
 
-  const computedDist = flightPlan.legs.reduce((acc, leg) => acc + parseNum(leg.dist), 0);
-  const computedEteMin = flightPlan.legs.reduce(
-    (acc, leg) => acc + parseNum(leg.ete || leg.temps),
-    0
-  );
-  const flightConso = Math.round(((computedEteMin / 60) * flightPlan.fuelPerHour) * 10) / 10;
+  // Calculs totaux saisis à la main par le pilote (ne font pas la somme des infos waypoints)
+  const manualEteMin = parseFloat(flightPlan.totalEteOverride || '0') || 0;
+  const flightConso = Math.round(((manualEteMin / 60) * flightPlan.fuelPerHour) * 10) / 10;
   const taxiConso = flightPlan.taxiFuel || 3;
-  const computedConsoLiters = Math.round((flightConso + taxiConso) * 10) / 10;
+  const computedConsoLiters = manualEteMin > 0 && flightPlan.fuelPerHour > 0 ? Math.round((flightConso + taxiConso) * 10) / 10 : 0;
 
   // Reset : vider toutes les infos incluant les données de l'avion et afficher la date du jour
   const handleReset = () => {
@@ -679,15 +766,18 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             <span className="font-bold text-slate-800 text-[11px] select-none">Dist Tot</span>
             <input
               type="text"
-              inputMode="numeric"
-              value={flightPlan.totalDistOverride !== undefined ? flightPlan.totalDistOverride : (computedDist > 0 ? `${computedDist}` : '')}
+              inputMode="decimal"
+              value={flightPlan.totalDistOverride || ''}
+              onKeyDown={(e) => handleNumericKeyDown(e, true)}
               onChange={(e) => {
-                const clean = e.target.value.replace(/[^0-9.]/g, '');
-                handleAircraftChange('totalDistOverride', clean);
+                const clean = e.target.value.replace(',', '.').replace(/[^0-9.]/g, '');
+                const parts = clean.split('.');
+                const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : clean;
+                handleAircraftChange('totalDistOverride', sanitized);
               }}
-              placeholder={computedDist > 0 ? `${computedDist}` : '—'}
+              placeholder="—"
               className="w-12 font-mono font-normal text-slate-900 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
-              title="Distance totale (NM) - modifiable, remplit le récap du log"
+              title="Distance totale (NM) - saisie manuelle par le pilote (ne fait pas la somme des waypoints)"
             />
             <span className="text-slate-500 font-normal text-[11px]">NM</span>
           </div>
@@ -698,14 +788,15 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             <input
               type="text"
               inputMode="numeric"
-              value={flightPlan.totalEteOverride !== undefined ? flightPlan.totalEteOverride : (computedEteMin > 0 ? `${computedEteMin}` : '')}
+              value={flightPlan.totalEteOverride || ''}
+              onKeyDown={(e) => handleNumericKeyDown(e, false)}
               onChange={(e) => {
                 const clean = e.target.value.replace(/[^0-9]/g, '');
                 handleAircraftChange('totalEteOverride', clean);
               }}
-              placeholder={computedEteMin > 0 ? `${computedEteMin}` : '—'}
+              placeholder="—"
               className="w-12 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
-              title="ETE totale - modifiable, remplit le récap du log (sans min)"
+              title="ETE totale (min) - saisie manuelle par le pilote (ne fait pas la somme des waypoints)"
             />
           </div>
 
@@ -714,15 +805,18 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             <span className="font-bold text-slate-800 text-[11px] select-none">Conso Tot</span>
             <input
               type="text"
-              inputMode="numeric"
-              value={flightPlan.totalConsoOverride !== undefined ? flightPlan.totalConsoOverride : (computedEteMin > 0 ? `${computedConsoLiters}` : '')}
+              inputMode="decimal"
+              value={flightPlan.totalConsoOverride !== undefined ? flightPlan.totalConsoOverride : ''}
+              onKeyDown={(e) => handleNumericKeyDown(e, true)}
               onChange={(e) => {
-                const clean = e.target.value.replace(/[^0-9.]/g, '');
-                handleAircraftChange('totalConsoOverride', clean);
+                const clean = e.target.value.replace(',', '.').replace(/[^0-9.]/g, '');
+                const parts = clean.split('.');
+                const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : clean;
+                handleAircraftChange('totalConsoOverride', sanitized);
               }}
-              placeholder={computedEteMin > 0 ? `${computedConsoLiters}` : '—'}
+              placeholder={computedConsoLiters > 0 ? `${computedConsoLiters}` : '—'}
               className="w-12 font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
-              title="Consommation totale (L) - modifiable, remplit le récap du log"
+              title="Consommation totale (L) - saisie manuelle ou calculée depuis l'ETE saisie"
             />
             <span className="text-slate-500 font-normal text-[11px]">L</span>
           </div>
@@ -854,10 +948,14 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
       {/* 2. ITINERARY LIST: ÉTAPES & BRANCHES MERGÉES */}
       <div className="space-y-0">
         {/* --- DÉPART (Origine) --- */}
-        <div className="border-2 border-sky-600 ring-1 ring-sky-700/30 bg-white rounded-xl shadow-xs">
-          {/* En-tête Départ */}
-          <div className="p-3 bg-sky-50/40 rounded-xl">
-            <div className="flex items-center justify-between mb-2">
+        {(() => {
+          const depVac = resolveAirfieldVac(flightPlan.departure);
+
+          return (
+            <div className="border-2 border-sky-600 ring-1 ring-sky-700/30 bg-white rounded-xl shadow-xs">
+              {/* En-tête Départ */}
+              <div className="p-3 bg-sky-50/40 rounded-xl">
+                <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-xs shadow-2xs">
                   <MapPin className="w-3.5 h-3.5 text-white fill-white" />
@@ -870,11 +968,22 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                   <span className="text-sky-950 font-extrabold">PON</span>
                 </span>
               </div>
-              {flightPlan.departure.oaci && (
-                <span className="text-[10px] font-mono font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
+              {depVac ? (
+                <a
+                  href={depVac.vacLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={depVac.vacLink.title}
+                  className="text-[10px] font-bold bg-white text-sky-800 px-2.5 py-0.5 rounded border border-sky-200 shadow-2xs inline-flex items-center gap-1.5 shrink-0 hover:bg-sky-50 hover:text-sky-950 transition-colors"
+                >
+                  <span className="underline decoration-sky-400 hover:decoration-sky-700">Carte VAC (SIA)</span>
+                  <span className="font-mono">{depVac.oaci}</span>
+                </a>
+              ) : flightPlan.departure.oaci ? (
+                <span className="text-[10px] font-mono font-bold bg-white text-sky-800 px-2 py-0.5 rounded border border-sky-200 shrink-0">
                   {flightPlan.departure.oaci}
                 </span>
-              )}
+              ) : null}
             </div>
 
             <AerodromeSearchInput
@@ -896,6 +1005,8 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
             />
           </div>
         </div>
+          );
+        })()}
 
         {/* Connecteur vers la suite */}
         <div className="flex justify-center py-1.5">
@@ -906,7 +1017,8 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
 
         {/* --- WAYPOINTS LOOP (Étapes intermédiaires) --- */}
         {flightPlan.waypoints.map((wp, wpIndex) => {
-          const isAero = wp.type === 'aerodrome';
+          const wpVac = resolveAirfieldVac(wp);
+          const isAero = wp.type === 'aerodrome' || Boolean(wpVac);
           const prevRaw =
             wpIndex === 0
               ? 'PON'
@@ -950,11 +1062,22 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                     </div>
 
                     <div className="flex items-center gap-0.5">
-                      {isAero && wp.oaci && (
-                        <span className="text-[10px] font-mono font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200 mr-1">
+                      {wpVac ? (
+                        <a
+                          href={wpVac.vacLink.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={wpVac.vacLink.title}
+                          className="text-[10px] font-bold bg-white text-sky-800 px-2.5 py-0.5 rounded border border-sky-200 mr-1 shadow-2xs inline-flex items-center gap-1.5 shrink-0 hover:bg-sky-50 hover:text-sky-950 transition-colors"
+                        >
+                          <span className="underline decoration-sky-400 hover:decoration-sky-700">Carte VAC (SIA)</span>
+                          <span className="font-mono">{wpVac.oaci}</span>
+                        </a>
+                      ) : (isAero && wp.oaci) ? (
+                        <span className="text-[10px] font-mono font-bold bg-white text-sky-800 px-2 py-0.5 rounded border border-sky-200 mr-1 shrink-0">
                           {wp.oaci}
                         </span>
-                      )}
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => handleMoveUp(wpIndex)}
@@ -1013,108 +1136,124 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                     isAero ? 'border-sky-200/80 bg-sky-50/20' : 'border-slate-200 bg-slate-50/80'
                   } p-2.5 rounded-b-[10px]`}
                 >
-                  <div className="grid grid-cols-3 gap-2 mb-2">
-                    <div>
-                      <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                        RM (°)
-                      </label>
-                      <input
-                        type="text"
-                        id={`leg-${legIndex}-rm`}
-                        value={leg.rm || ''}
-                        onChange={(e) => handleLegChange(legIndex, 'rm', e.target.value)}
-                        placeholder="-"
-                        className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
-                          isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                        DIST (NM)
-                      </label>
-                      <input
-                        type="text"
-                        id={`leg-${legIndex}-dist`}
-                        value={leg.dist || ''}
-                        onChange={(e) => handleLegChange(legIndex, 'dist', e.target.value)}
-                        placeholder="-"
-                        className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
-                          isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                        Altitude
-                      </label>
-                      <input
-                        type="text"
-                        id={`leg-${legIndex}-alt`}
-                        value={leg.alt || ''}
-                        onChange={(e) => handleLegChange(legIndex, 'alt', e.target.value)}
-                        placeholder="-"
-                        className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
-                          isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
-                        }`}
-                      />
-                    </div>
-                  </div>
+                  <div className="grid grid-cols-1 min-[480px]:grid-cols-3 gap-2.5 items-stretch">
+                    {/* Gauche (2/3) : 1ère ligne RM/DIST/ALT, 2ème ligne T sans/avec Vw */}
+                    <div className="min-[480px]:col-span-2 flex flex-col justify-between gap-2">
+                      {/* 1ère ligne : RM / DIST / ALTITUDE */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                            RM (°)
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            id={`leg-${legIndex}-rm`}
+                            value={leg.rm || ''}
+                            onKeyDown={(e) => handleNumericKeyDown(e, false)}
+                            onChange={(e) => handleLegChange(legIndex, 'rm', e.target.value)}
+                            placeholder="-"
+                            className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
+                              isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                            DIST (NM)
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            id={`leg-${legIndex}-dist`}
+                            value={leg.dist || ''}
+                            onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                            onChange={(e) => handleLegChange(legIndex, 'dist', e.target.value)}
+                            placeholder="-"
+                            className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
+                              isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                            Altitude
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            id={`leg-${legIndex}-alt`}
+                            value={leg.alt || ''}
+                            onKeyDown={(e) => handleNumericKeyDown(e, false)}
+                            onChange={(e) => handleLegChange(legIndex, 'alt', e.target.value)}
+                            placeholder="-"
+                            className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
+                              isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
+                            }`}
+                          />
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div>
-                      <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                        T sans Vw (min)
-                      </label>
-                      <input
-                        type="text"
-                        id={`leg-${legIndex}-tSansVw`}
-                        value={leg.tSansVw ?? leg.ete ?? leg.temps ?? ''}
-                        onChange={(e) => handleLegChange(legIndex, 'tSansVw', e.target.value)}
-                        placeholder="-"
-                        className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
-                          isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
-                        }`}
-                      />
+                      {/* 2ème ligne : T sans Vw / T avec Vw */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                            T sans Vw (min)
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            id={`leg-${legIndex}-tSansVw`}
+                            value={leg.tSansVw ?? leg.ete ?? leg.temps ?? ''}
+                            onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                            onChange={(e) => handleLegChange(legIndex, 'tSansVw', e.target.value)}
+                            placeholder="-"
+                            className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
+                              isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                            T avec Vw (min)
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            id={`leg-${legIndex}-tAvecVw`}
+                            value={leg.tAvecVw || ''}
+                            onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                            onChange={(e) => handleLegChange(legIndex, 'tAvecVw', e.target.value)}
+                            placeholder="-"
+                            className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
+                              isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
+                            }`}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                        T avec Vw (min)
-                      </label>
-                      <input
-                        type="text"
-                        id={`leg-${legIndex}-tAvecVw`}
-                        value={leg.tAvecVw || ''}
-                        onChange={(e) => handleLegChange(legIndex, 'tAvecVw', e.target.value)}
-                        placeholder="-"
-                        className={`w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 ${
-                          isAero ? 'focus:ring-sky-500' : 'focus:ring-slate-700'
-                        }`}
-                      />
-                    </div>
-                  </div>
 
-                  {/* Box Notes */}
-                  <div>
-                    <label
-                      className={`block text-[8.5px] font-bold uppercase tracking-wider mb-0.5 ${
-                        isAero ? 'text-sky-900' : 'text-slate-600'
-                      }`}
-                    >
-                      Notes
-                    </label>
-                    <input
-                      type="text"
-                      id={`leg-${legIndex}-notes`}
-                      value={leg.notes || wp.tableNotes || ''}
-                      onChange={(e) => handleLegChange(legIndex, 'notes', e.target.value)}
-                      placeholder="Notes (remplit la colonne Notes du log de nav)..."
-                      className={`w-full px-2 py-1 bg-white border rounded text-xs font-mono font-medium focus:ring-1 ${
-                        isAero
-                          ? 'border-sky-300 focus:ring-sky-500'
-                          : 'border-slate-300 focus:ring-slate-700'
-                      }`}
-                    />
+                    {/* Droite (1/3) : Notes */}
+                    <div className="min-[480px]:col-span-1 flex flex-col h-full">
+                      <label
+                        className={`block text-[8.5px] font-bold uppercase tracking-wider mb-0.5 ${
+                          isAero ? 'text-sky-900' : 'text-slate-600'
+                        }`}
+                      >
+                        Notes
+                      </label>
+                      <textarea
+                        id={`leg-${legIndex}-notes`}
+                        value={leg.notes || wp.tableNotes || ''}
+                        onChange={(e) => handleLegChange(legIndex, 'notes', e.target.value)}
+                        placeholder="Notes (remplit la colonne Notes du log de nav)..."
+                        className={`w-full flex-1 min-h-[66px] px-2 py-1.5 bg-white border rounded text-xs font-mono font-medium focus:ring-1 resize-none ${
+                          isAero
+                            ? 'border-sky-300 focus:ring-sky-500'
+                            : 'border-slate-300 focus:ring-slate-700'
+                        }`}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1175,6 +1314,7 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
           const currentPointName = flightPlan.destination.name?.trim() ? truncateWpName(flightPlan.destination.name.trim(), 18) : 'Arrivée';
           const destLegIndex = flightPlan.waypoints.length;
           const destLeg = getLeg(destLegIndex);
+          const destVac = resolveAirfieldVac(flightPlan.destination);
 
           return (
             <div className="border-2 border-sky-600 ring-1 ring-sky-700/30 bg-white rounded-xl shadow-xs overflow-hidden">
@@ -1190,11 +1330,22 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
                       <span className="text-sky-950 font-extrabold">{currentPointName}</span>
                     </span>
                   </div>
-                  {flightPlan.destination.oaci && (
-                    <span className="text-[10px] font-mono font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
+                  {destVac ? (
+                    <a
+                      href={destVac.vacLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={destVac.vacLink.title}
+                      className="text-[10px] font-bold bg-white text-sky-800 px-2.5 py-0.5 rounded border border-sky-200 shadow-2xs inline-flex items-center gap-1.5 shrink-0 hover:bg-sky-50 hover:text-sky-950 transition-colors"
+                    >
+                      <span className="underline decoration-sky-400 hover:decoration-sky-700">Carte VAC (SIA)</span>
+                      <span className="font-mono">{destVac.oaci}</span>
+                    </a>
+                  ) : flightPlan.destination.oaci ? (
+                    <span className="text-[10px] font-mono font-bold bg-white text-sky-800 px-2 py-0.5 rounded border border-sky-200 shrink-0">
                       {flightPlan.destination.oaci}
                     </span>
-                  )}
+                  ) : null}
                 </div>
 
                 <div>
@@ -1213,90 +1364,106 @@ export const FlightPlanEditor: React.FC<FlightPlanEditorProps> = ({
 
               {/* Section Paramètres de Branche de destination (RM, DIST, ALTITUDE, T sans/avec Vw, Notes) */}
               <div className="border-t border-sky-200/80 bg-sky-50/20 p-2.5 rounded-b-[10px]">
-                <div className="grid grid-cols-3 gap-2 mb-2">
-                  <div>
-                    <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                      RM (°)
-                    </label>
-                    <input
-                      type="text"
-                      id={`leg-${destLegIndex}-rm`}
-                      value={destLeg.rm || ''}
-                      onChange={(e) => handleLegChange(destLegIndex, 'rm', e.target.value)}
-                      placeholder="-"
-                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                      DIST (NM)
-                    </label>
-                    <input
-                      type="text"
-                      id={`leg-${destLegIndex}-dist`}
-                      value={destLeg.dist || ''}
-                      onChange={(e) => handleLegChange(destLegIndex, 'dist', e.target.value)}
-                      placeholder="-"
-                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                      Altitude
-                    </label>
-                    <input
-                      type="text"
-                      id={`leg-${destLegIndex}-alt`}
-                      value={destLeg.alt || ''}
-                      onChange={(e) => handleLegChange(destLegIndex, 'alt', e.target.value)}
-                      placeholder="-"
-                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
-                    />
-                  </div>
-                </div>
+                <div className="grid grid-cols-1 min-[480px]:grid-cols-3 gap-2.5 items-stretch">
+                  {/* Gauche (2/3) : 1ère ligne RM/DIST/ALT, 2ème ligne T sans/avec Vw */}
+                  <div className="min-[480px]:col-span-2 flex flex-col justify-between gap-2">
+                    {/* 1ère ligne : RM / DIST / ALTITUDE */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                          RM (°)
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          id={`leg-${destLegIndex}-rm`}
+                          value={destLeg.rm || ''}
+                          onKeyDown={(e) => handleNumericKeyDown(e, false)}
+                          onChange={(e) => handleLegChange(destLegIndex, 'rm', e.target.value)}
+                          placeholder="-"
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                          DIST (NM)
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          id={`leg-${destLegIndex}-dist`}
+                          value={destLeg.dist || ''}
+                          onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                          onChange={(e) => handleLegChange(destLegIndex, 'dist', e.target.value)}
+                          placeholder="-"
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                          Altitude
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          id={`leg-${destLegIndex}-alt`}
+                          value={destLeg.alt || ''}
+                          onKeyDown={(e) => handleNumericKeyDown(e, false)}
+                          onChange={(e) => handleLegChange(destLegIndex, 'alt', e.target.value)}
+                          placeholder="-"
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                      T sans Vw (min)
-                    </label>
-                    <input
-                      type="text"
-                      id={`leg-${destLegIndex}-tSansVw`}
-                      value={destLeg.tSansVw ?? destLeg.ete ?? destLeg.temps ?? ''}
-                      onChange={(e) => handleLegChange(destLegIndex, 'tSansVw', e.target.value)}
-                      placeholder="-"
-                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
-                    />
+                    {/* 2ème ligne : T sans Vw / T avec Vw */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                          T sans Vw (min)
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          id={`leg-${destLegIndex}-tSansVw`}
+                          value={destLeg.tSansVw ?? destLeg.ete ?? destLeg.temps ?? ''}
+                          onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                          onChange={(e) => handleLegChange(destLegIndex, 'tSansVw', e.target.value)}
+                          placeholder="-"
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                          T avec Vw (min)
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          id={`leg-${destLegIndex}-tAvecVw`}
+                          value={destLeg.tAvecVw || ''}
+                          onKeyDown={(e) => handleNumericKeyDown(e, true)}
+                          onChange={(e) => handleLegChange(destLegIndex, 'tAvecVw', e.target.value)}
+                          placeholder="-"
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                      T avec Vw (min)
-                    </label>
-                    <input
-                      type="text"
-                      id={`leg-${destLegIndex}-tAvecVw`}
-                      value={destLeg.tAvecVw || ''}
-                      onChange={(e) => handleLegChange(destLegIndex, 'tAvecVw', e.target.value)}
-                      placeholder="-"
-                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
-                    />
-                  </div>
-                </div>
 
-                {/* Box Notes */}
-                <div>
-                  <label className="block text-[8.5px] font-bold uppercase tracking-wider text-sky-900 mb-0.5">
-                    Notes
-                  </label>
-                  <input
-                    type="text"
-                    id="destination-table-notes-input"
-                    value={destLeg.notes || flightPlan.destination.tableNotes || flightPlan.destination.notes || ''}
-                    onChange={(e) => handleLegChange(destLegIndex, 'notes', e.target.value)}
-                    placeholder="Notes (remplit la colonne Notes du log de nav)..."
-                    className="w-full px-2 py-1 bg-white border border-sky-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500"
-                  />
+                  {/* Droite (1/3) : Notes */}
+                  <div className="min-[480px]:col-span-1 flex flex-col h-full">
+                    <label className="block text-[8.5px] font-bold uppercase tracking-wider text-sky-900 mb-0.5">
+                      Notes
+                    </label>
+                    <textarea
+                      id="destination-table-notes-input"
+                      value={destLeg.notes || flightPlan.destination.tableNotes || flightPlan.destination.notes || ''}
+                      onChange={(e) => handleLegChange(destLegIndex, 'notes', e.target.value)}
+                      placeholder="Notes (remplit la colonne Notes du log de nav)..."
+                      className="w-full flex-1 min-h-[66px] px-2 py-1.5 bg-white border border-sky-300 rounded text-xs font-mono font-medium focus:ring-1 focus:ring-sky-500 resize-none"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

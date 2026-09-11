@@ -22,7 +22,6 @@ import {
   Loader2,
   X,
   Upload,
-  Wrench,
   ArrowLeftRight,
   AlertCircle,
 } from 'lucide-react';
@@ -794,12 +793,27 @@ export default function App() {
 
   // Update leg fields directly from table
   const handleUpdateLeg = (index: number, field: keyof NavLeg, value: string) => {
+    let sanitizedValue = value;
+    if (field === 'rm') {
+      const digits = value.replace(/[^0-9]/g, '');
+      const num = parseInt(digits, 10);
+      sanitizedValue = num > 360 ? '360' : digits;
+    } else if (field === 'alt') {
+      sanitizedValue = value.replace(/[^0-9]/g, '');
+    } else if (field === 'dist' || field === 'tSansVw' || field === 'tAvecVw' || field === 'ete' || field === 'temps') {
+      const clean = value.replace(',', '.').replace(/[^0-9.]/g, '');
+      const parts = clean.split('.');
+      sanitizedValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : clean;
+    }
+
     setFlightPlan((prev) => {
       const updatedLegs = [...prev.legs];
       if (updatedLegs[index]) {
         updatedLegs[index] = {
           ...updatedLegs[index],
-          [field]: value,
+          [field]: sanitizedValue,
+          ...(field === 'tSansVw' ? { ete: sanitizedValue, temps: sanitizedValue } : {}),
+          ...(field === 'ete' ? { tSansVw: sanitizedValue, temps: sanitizedValue } : {}),
         };
       }
       
@@ -937,12 +951,14 @@ export default function App() {
             id: 'wp-pontoise',
             type: 'aerodrome',
             name: 'LFPT Pontoise',
+            oaci: 'LFPT',
             notes: 'Transit classe D. TWR 121.200 si traversée.',
           },
           {
             id: 'wp-abbeville',
             type: 'aerodrome',
             name: 'LFOI Abbeville',
+            oaci: 'LFOI',
             notes: 'A/A 123.500. Alt 2500 ft.',
           },
           {
@@ -1023,6 +1039,7 @@ export default function App() {
             id: 'wp-bernay',
             type: 'aerodrome',
             name: 'LFBD Bernay Saint-Martin',
+            oaci: 'LFBD',
             notes: 'A/A 123.500. Alt 558 ft.',
           },
         ],
@@ -1484,37 +1501,52 @@ export default function App() {
             activeTab === 'preview' ? 'hidden lg:block' : 'block'
           }`}
         >
-          <div className="relative flex items-center justify-between gap-2 min-w-0 min-h-[32px] lg:min-h-[40px]">
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0 z-10">
-              <button
-                type="button"
-                id="easter-egg-default-flight-btn"
-                onClick={handleEasterEggDefaultFlight}
-                className="hover:scale-110 active:scale-95 transition-transform p-0.5 rounded cursor-pointer group focus:outline-none"
-                title="Easter egg : paramétrer mon vol par défaut (P200, F-JUJN, 17L/h, 90kt, LFPX Chavenay)"
-              >
-                <FileText className="w-4 h-4 text-sky-600 group-hover:text-sky-800 transition-colors shrink-0" />
-              </button>
-              <span>Paramétrage</span>
-            </h2>
+          <div className="relative flex items-center justify-between gap-2 min-w-0 min-h-[40px]">
+            {/* Colonne gauche : Titre Paramétrage */}
+            <div className="flex items-center min-w-0 z-10">
+              <h2 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0 leading-none">
+                <button
+                  type="button"
+                  id="easter-egg-default-flight-btn"
+                  onClick={handleEasterEggDefaultFlight}
+                  className="hover:scale-110 active:scale-95 transition-transform p-0.5 rounded cursor-pointer group focus:outline-none"
+                  title="Easter egg : paramétrer mon vol par défaut (P200, F-JUJN, 17L/h, 90kt, LFPX Chavenay)"
+                >
+                  <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-600 group-hover:text-sky-800 transition-colors shrink-0" />
+                </button>
+                <span>Paramétrage</span>
+              </h2>
+            </div>
 
-            {/* Bouton GPX centré sur la colonne paramétrage */}
-            <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-10 pointer-events-auto">
+            {/* Bouton GPX et lien SkyVector sur la bordure droite */}
+            <div className="relative flex flex-col items-end justify-center z-20 shrink-0">
               <button
                 type="button"
                 id="import-gpx-btn"
                 onClick={() => gpxFileInputRef.current?.click()}
                 disabled={isImportingGpx}
-                className="h-8 lg:h-10 px-2.5 lg:px-3.5 lg:py-2 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-xs lg:text-sm font-bold flex items-center justify-center gap-1.5 lg:gap-2 shadow-2xs lg:shadow-sm hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
+                className="h-7 sm:h-8 px-2.5 sm:px-3 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
                 title="Importer un fichier GPX SkyVector"
               >
                 {isImportingGpx ? (
-                  <Loader2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 animate-spin shrink-0" />
+                  <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin shrink-0" />
                 ) : (
-                  <Upload className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
+                  <Upload className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                 )}
-                <span>GPX</span>
+                <span>Importer GPX</span>
               </button>
+
+              <a
+                href="https://skyvector.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                id="generate-gpx-link"
+                className="mt-0.5 sm:mt-1 flex items-center gap-1 text-[10px] sm:text-[11px] text-[#0069A8] hover:text-sky-800 underline underline-offset-2 transition-colors cursor-pointer whitespace-nowrap"
+                title="Ouvrir SkyVector pour générer un fichier GPX"
+              >
+                <span>SkyVector</span>
+                <ExternalLink className="w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0" />
+              </a>
 
               <input
                 ref={gpxFileInputRef}
@@ -1523,60 +1555,6 @@ export default function App() {
                 className="hidden"
                 onChange={handleGpxFileChange}
               />
-            </div>
-
-            {/* Bouton vol retour à trois états sur la bordure droite de la colonne paramètre */}
-            <div className="relative flex items-center justify-end z-20">
-              <button
-                type="button"
-                id="return-flight-btn"
-                onClick={handleReturnButtonClick}
-                className={`h-8 lg:h-10 px-2.5 lg:px-3.5 lg:py-2 rounded-lg text-xs lg:text-sm font-bold flex items-center justify-center gap-1.5 lg:gap-2 transition-all cursor-pointer whitespace-nowrap min-w-[145px] lg:min-w-[165px] ${
-                  !returnPlan
-                    ? isReadyForReturn
-                      ? 'bg-sky-700 hover:bg-sky-800 active:bg-sky-900 text-white shadow-2xs lg:shadow-sm hover:shadow'
-                      : 'bg-slate-200 hover:bg-slate-200 text-slate-400 border border-slate-300 shadow-2xs'
-                    : 'bg-sky-700 hover:bg-sky-800 active:bg-sky-900 text-white shadow-2xs lg:shadow-sm hover:shadow'
-                }`}
-                title={
-                  !returnPlan
-                    ? isReadyForReturn
-                      ? 'Créer le vol retour'
-                      : 'Aérodromes manquants pour créer le vol retour'
-                    : activeLeg === 'outbound'
-                    ? 'Basculer vers le vol retour'
-                    : 'Basculer vers le vol aller'
-                }
-              >
-                {!returnPlan ? (
-                  <Wrench className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
-                ) : (
-                  <ArrowLeftRight className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
-                )}
-                <span>
-                  {!returnPlan
-                    ? 'Créer vol retour'
-                    : activeLeg === 'outbound'
-                    ? 'Voir vol retour'
-                    : 'Voir vol aller'}
-                </span>
-              </button>
-
-              {/* Note explicative visible 4 secondes à l'écran si clic en État 1 */}
-              {showReturnNote && (
-                <div
-                  id="return-flight-explanation-note"
-                  role="alert"
-                  className="absolute right-0 top-full mt-2 w-72 sm:w-80 p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-lg shadow-lg z-50 animate-in fade-in slide-in-from-top-1 pointer-events-none text-left"
-                >
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="leading-snug font-medium">
-                      Renseignez un aérodrome de départ et un aérodrome d'arrivée pour créer le vol retour.
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -1596,31 +1574,31 @@ export default function App() {
             activeTab === 'editor' ? 'hidden lg:flex' : 'flex'
           }`}
         >
-          {/* Preview Toolbar (Bouton Sauvegarder ou Barre d'état + Lien à gauche, Imprimer à droite) */}
-          <div className="no-print w-full max-w-[148mm] flex items-center justify-between gap-2 mb-2 px-1">
-            {/* GAUCHE : Outil de sauvegarde */}
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap min-w-0">
+          {/* Preview Toolbar (Sauvegarder / Lien à gauche, Vol retour / aller au centre, Imprimer à droite) */}
+          <div className="no-print w-[148mm] max-w-full flex items-center justify-between gap-1.5 sm:gap-2 mb-2">
+            {/* 1. GAUCHE : Outil de sauvegarde (Bouton Sauvegarder OU Statut + Lien court tronqué) */}
+            <div className="flex items-center gap-1.5 shrink-0 min-w-0">
               {!logId ? (
                 <button
                   type="button"
                   id="save-flight-log-btn"
                   onClick={handleManualSave}
                   disabled={isSaving}
-                  className="h-10 px-3.5 py-2 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
+                  className="h-9 px-3 bg-sky-700 hover:bg-sky-800 active:bg-sky-900 disabled:opacity-60 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
                   title="Sauvegarder le plan de vol"
                 >
-                  <Save className="w-4 h-4 shrink-0" />
+                  <Save className="w-3.5 h-3.5 shrink-0" />
                   <span>Sauvegarder</span>
                 </button>
               ) : (
-                <>
-                  {/* BOÎTE STATUT D'ENREGISTREMENT : format quasi carré avec pastille et picto */}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {/* BOÎTE STATUT D'ENREGISTREMENT : format compact avec pastille et picto */}
                   <button
                     type="button"
                     id="log-status-bar"
                     disabled={saveStatus.state !== 'error' || isSaving}
                     onClick={saveStatus.state === 'error' ? handleManualSave : undefined}
-                    className={`h-10 w-12 rounded-lg flex items-center justify-center gap-1.5 border transition-all shrink-0 select-none ${
+                    className={`h-9 w-9 sm:w-9.5 rounded-lg flex items-center justify-center gap-1 border transition-all shrink-0 select-none ${
                       saveStatus.state === 'error'
                         ? 'bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border-rose-300 text-rose-700 cursor-pointer shadow-2xs'
                         : saveStatus.state === 'saving'
@@ -1636,7 +1614,7 @@ export default function App() {
                     }
                   >
                     <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                         saveStatus.state === 'error'
                           ? 'bg-rose-500'
                           : saveStatus.state === 'saving'
@@ -1645,64 +1623,112 @@ export default function App() {
                       }`}
                     />
                     {saveStatus.state === 'error' ? (
-                      <X className="w-4 h-4 text-rose-600 shrink-0" strokeWidth={2.5} />
+                      <X className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.5} />
                     ) : saveStatus.state === 'saving' ? (
-                      <Loader2 className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
+                      <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
                     ) : (
-                      <Save className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <Save className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     )}
                   </button>
 
-                  {/* LIEN (élément de droite) : picto copier en premier, URL sans https://, et texte 'Conservez ce lien pour ce log' */}
+                  {/* LIEN COURT : tronqué avec ellipsis si nécessaire pour respecter strictement la largeur 148mm */}
                   <button
                     type="button"
                     id="log-share-link-btn"
                     onClick={handleCopyUrl}
-                    title="Conservez ce lien pour retrouver et modifier ce log"
-                    className="h-10 pl-2.5 pr-3.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-lg flex items-center gap-2 transition-colors cursor-pointer shadow-2xs min-w-0 max-w-[260px] sm:max-w-[320px] overflow-hidden"
+                    title={`Conservez ce lien pour retrouver ce log : ${logUrls.copyUrl} (cliquer pour copier l'adresse complète)`}
+                    className="h-9 px-2 sm:px-2.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs max-w-[140px] sm:max-w-[165px] min-w-0 overflow-hidden shrink-0"
                   >
                     {isCopied ? (
-                      <div className="flex items-center gap-2 min-w-0 w-full">
-                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div className="flex items-center gap-1.5 min-w-0 w-full">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                         <div className="flex flex-col items-start justify-center text-left min-w-0 overflow-hidden w-full">
-                          <span className="font-semibold text-[11px] sm:text-xs text-emerald-700 leading-tight block truncate w-full">
+                          <span className="font-semibold text-xs text-emerald-700 leading-tight truncate block w-full">
                             Copié !
                           </span>
-                          <span className="text-[9.5px] text-slate-500 font-normal leading-tight mt-0.5 block truncate w-full">
-                            Conservez ce lien pour ce log
+                          <span className="text-[8.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate block w-full">
+                            Conservez ce lien
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 min-w-0 w-full">
-                        <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div className="flex items-center gap-1.5 min-w-0 w-full">
+                        <Copy className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <div className="flex flex-col items-start justify-center text-left min-w-0 overflow-hidden w-full">
-                          <span className="font-mono text-[11px] sm:text-xs text-sky-700 hover:underline underline-offset-2 font-semibold leading-tight block truncate w-full">
+                          <span className="font-mono text-xs text-sky-700 hover:underline underline-offset-2 font-bold leading-tight truncate block w-full">
                             {logUrls.displayUrl}
                           </span>
-                          <span className="text-[9.5px] text-slate-500 font-normal leading-tight mt-0.5 block truncate w-full">
-                            Conservez ce lien pour ce log
+                          <span className="text-[8.5px] text-slate-500 font-normal leading-tight mt-0.5 truncate block w-full">
+                            Conservez ce lien
                           </span>
                         </div>
                       </div>
                     )}
                   </button>
-                </>
+                </div>
               )}
             </div>
 
-            {/* DROITE : Bouton Imprimer ce log (+ Imprimer log vierge sur mobile) */}
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Sur mobile, 'Imprimer log vierge' apparaît ici dans la page 2 Aperçu */}
+            {/* 2. MILIEU : Bouton Vol retour / commutateur Voir vol aller / retour */}
+            <div className="relative flex items-center justify-center shrink-0">
+              <button
+                type="button"
+                id="return-flight-btn"
+                onClick={handleReturnButtonClick}
+                className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  !returnPlan && !isReadyForReturn
+                    ? 'bg-slate-100 hover:bg-slate-100 text-slate-400 border border-slate-300 shadow-2xs'
+                    : 'bg-white hover:bg-sky-50 active:bg-sky-100 text-[#0069A8] border border-[#0069A8] shadow-2xs hover:shadow'
+                }`}
+                title={
+                  !returnPlan
+                    ? isReadyForReturn
+                      ? 'Créer le vol retour'
+                      : 'Aérodromes manquants pour créer le vol retour'
+                    : activeLeg === 'outbound'
+                    ? 'Basculer vers le vol retour'
+                    : 'Basculer vers le vol aller'
+                }
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {!returnPlan
+                    ? 'Créer vol retour'
+                    : activeLeg === 'outbound'
+                    ? 'Voir vol retour'
+                    : 'Voir vol aller'}
+                </span>
+              </button>
+
+              {/* Note explicative visible 4 secondes à l'écran si clic en État 1 */}
+              {showReturnNote && (
+                <div
+                  id="return-flight-explanation-note"
+                  role="alert"
+                  className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 sm:w-80 p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-lg shadow-lg z-50 animate-in fade-in slide-in-from-top-1 pointer-events-none text-left"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="leading-snug font-medium">
+                      Renseignez un aérodrome de départ et un aérodrome d'arrivée pour créer le vol retour.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. DROITE : Bouton Imprimer ce log (+ Imprimer log vierge sur mobile) */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Sur mobile, 'Imprimer log vierge' */}
               <button
                 type="button"
                 id="mobile-print-blank-log-preview-btn"
                 onClick={handlePrintBlankLog}
-                className="lg:hidden h-10 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white border border-slate-600/80 rounded-lg text-xs font-normal flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer whitespace-nowrap"
+                className="lg:hidden h-9 px-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white border border-slate-600/80 rounded-lg text-xs font-normal flex items-center gap-1 shadow-2xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 title="Imprimer le log 100% vierge en double"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>Imprimer log vierge</span>
+                <span className="hidden sm:inline">Vierge</span>
               </button>
 
               <button
@@ -1710,9 +1736,9 @@ export default function App() {
                 type="button"
                 id="quick-print-preview-btn"
                 onClick={() => handlePrint()}
-                className="h-10 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer whitespace-nowrap"
+                className="h-9 px-3 sm:px-3.5 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5 shrink-0" />
                 <span>Imprimer ce log</span>
               </button>
             </div>
